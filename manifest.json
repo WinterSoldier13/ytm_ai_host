@@ -5,7 +5,6 @@
     "description": "Alerts when a song is about to end on YouTube Music.",
     "permissions": [
         "activeTab",
-        "aiAssistant",
         "offscreen",
         "scripting",
         "storage",

@@ -40,11 +40,18 @@
     ```
 
 2.  **Install Dependencies & Build**
+    - **Standard Build (Default)** - _Optimized size, includes Gemini API support only._
 
-    ```bash
-    npm install
-    npm run build
-    ```
+      ```bash
+      npm install
+      npm run build
+      ```
+
+    - **Build with WebLLM** - _Large size, enables local browser LLM._
+      ```bash
+      npm install
+      npm run build -- --env webllm
+      ```
 
 3.  **Load into Chrome**
     - Open Chrome and go to `chrome://extensions`.
@@ -120,9 +127,10 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 1.  Click the **AI DJ Cara** icon in your Chrome toolbar.
 2.  **Model Provider**:
     - _Gemini API (Recommended)_: Uses Google's Cloud API. Requires a free API key.
-    - _Gemini (Chrome)_: Uses Chrome's built-in AI (requires `chrome://flags` configuration).
+
     - _WebLLM_: Downloads and runs models in the browser via WebGPU.
     - _Local Server_: Connects to your running Python server for generation.
+
 3.  **Speech Service**:
     - _Chrome TTS_: Robotic but fast.
     - _Local Server_: Uses the high-quality XTTS voice from your python server.

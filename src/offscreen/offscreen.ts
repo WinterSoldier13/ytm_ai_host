@@ -1,25 +1,5 @@
 import { MessageSchema } from '../utils/types';
-import { CreateMLCEngine, AppConfig } from "@mlc-ai/web-llm";
-
-const RJ_SYSTEM_PROMPT = `
-  You are DJ Cara, a high-energy, witty, and charismatic radio host broadcasting live!
-  Goal: Create a seamless, hype transition between two songs.
-  Style: Energetic, punchy, cool, engaging. Use radio slang but keep it natural.
-  Constraints: Max 2 sentences. No emojis. No repetitive phrasing like "That was... now here is...".
-  Instruction: Acknowledge the vibe of the previous track briefly, then aggressively hype up the next track. Make the listener excited!
-`;
-
-const SELECTED_MODEL = "Llama-3.1-8B-Instruct-q4f16_1-MLC";
-
-const appConfig: AppConfig = {
-  model_list: [
-    {
-      model: `https://huggingface.co/mlc-ai/${SELECTED_MODEL}`,
-      model_id: SELECTED_MODEL,
-      model_lib: `https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Llama-3_1-8B-Instruct-q4f16_1-ctx4k_cs1k-webgpu.wasm`,
-    },
-  ],
-};
+import { RJ_SYSTEM_PROMPT } from './constants';
 
 const audioCache = new Map<string, Promise<string>>(); // text -> Promise<blobUrl>
 
@@ -85,17 +65,33 @@ async function preloadAudio(payload: { localServerPort: number; textToSpeak: str
 }
 
 async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; geminiApiKey?: string; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
-    // Backward compatibility or default logic
-    const modelProvider = payload.modelProvider || (payload.useWebLLM ? 'webllm' : 'gemini');
+    // Default to gemini-api if not specified
+    const modelProvider = payload.modelProvider || 'gemini-api';
 
     if (modelProvider === 'localserver') {
         return generateWithLocalServer(payload);
-    } else if (modelProvider === 'webllm') {
-        return generateWithWebLLM(payload);
-    } else if (modelProvider === 'gemini-api') {
-        return generateWithGeminiAPI(payload);
+    } else if (modelProvider === 'webllm' || payload.useWebLLM) {
+        // Condition checked at build time
+        if (process.env.INCLUDE_WEBLLM) {
+            // Dynamic import to avoid bundling if not included
+            // Note: In webpack, dynamic import usually creates a separate chunk. 
+            // Since we want to control bundling via DefinePlugin, we can try require but 
+            // standard dynamic import `import()` is better for splitting.
+            try {
+                // @ts-ignore
+                const webLLMService = await import('./webllmService');
+                return webLLMService.generateWithWebLLM(payload);
+            } catch (e) {
+                console.error("Failed to load WebLLM service:", e);
+                return "WebLLM service not available in this build.";
+            } 
+        } else {
+             console.warn("WebLLM requested but not included in this build.");
+             return "WebLLM support is not enabled in this build of the extension.";
+        }
     } else {
-        return generateInOffscreen(payload); // Gemini (Chrome AI)
+        // Default: Gemini API
+        return generateWithGeminiAPI(payload);
     }
 }
 
@@ -152,11 +148,13 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
 
         if (!audioPromise) {
              console.log("Audio not cached, requesting now (Just-In-Time)...");
-             if (payload.speechProvider === 'gemini-api') {
-                 audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
-             } else {
+             // Default to Gemini API if not local
+             if (payload.speechProvider === 'localserver') {
                  const port = payload.localServerPort || 8008;
                  audioPromise = fetchAudio(port, payload.textToSpeak);
+             } else {
+                 // Default: Gemini API
+                 audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
              }
              audioCache.set(payload.textToSpeak, audioPromise);
         } else {
@@ -175,7 +173,6 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
             });
         }
         // If it's an ArrayBuffer (Gemini API returns PCM, which we convert to WAV ArrayBuffer or play directly)
-        // Actually fetchGeminiTTS will return a Blob URL of the WAV file to keep it consistent
         else {
              const audio = new Audio(urlOrBuffer);
              return new Promise<void>((resolve, reject) => {
@@ -310,96 +307,5 @@ async function generateWithLocalServer(data: { oldSongTitle: string, oldArtist: 
    } catch (err) {
        console.error("Local Server Model failed:", err);
        return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
-   }
-}
-
-let engine: any = null;
-
-async function getEngine() {
-    if (engine) return engine;
-    
-    console.log("Initializing WebLLM Engine...");
-    engine = await CreateMLCEngine(SELECTED_MODEL, { 
-      appConfig,
-      initProgressCallback: (report) => console.log("Hiring Cara RJ:", report.text)
-    });
-    return engine;
-}
-
-
-async function generateWithWebLLM(data: { oldSongTitle: string, oldArtist: string, newSongTitle: string, newArtist: string, currentTime?: string }): Promise<string> {
-    try {
-        console.log("Using WebLLM Model:", SELECTED_MODEL);
-        const engine = await getEngine();
-
-        const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
-        
-        // Use consistent prompt
-        const systemPrompt = RJ_SYSTEM_PROMPT + ` You are Cara, a high-energy radio DJ. Your output must be under 3 sentences. Be punchy, cool, and direct. Use the provided time to set the mood if relevant. No emojis. No intros like "Here is the transition".`;
-
-        const currentTask = `Previous: "${data.oldSongTitle}" by ${data.oldArtist}\nNext: "${data.newSongTitle}" by ${data.newArtist}\n${timeContext}`;
-
-        const reply = await engine.chat.completions.create({
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: `Previous: "Hello" by Adele\nNext: "Levitating" by Dua Lipa` },
-                { role: "assistant", content: "Adele keeping it deep with Hello. Now let's pick up the pace, here is Dua Lipa turning up the heat with Levitating!" },
-                
-                { role: "user", content: `Previous: "Hotel California" by Eagles\nNext: "Humble" by Kendrick Lamar` },
-                { role: "assistant", content: "That was the legendary Eagles. We're switching lanes completely now—turn your volume up for Kendrick Lamar." },
-
-                { role: "user", content: currentTask }
-            ],
-
-            temperature: 0.8, // Bump slightly for creativity
-            top_p: 0.9,      // Helps variety
-            repetition_penalty: 1.1, // CRITICAL for 1B models to stop loops
-            max_tokens: 128,
-        });
-
-        console.log("WebLLM Response:", reply);
-        return reply.choices[0].message.content || `Coming up: ${data.newSongTitle}.`;
-    } catch (err) {
-        console.error("WebLLM failed:", err);
-        return `Next up: ${data.newSongTitle} by ${data.newArtist}. Let's go!`;
-    }
-}
-
-async function generateInOffscreen(data: { oldSongTitle: string, oldArtist: string, newSongTitle: string, newArtist: string }): Promise<string> {
-   try {
-        // @ts-ignore
-        const ai = window.ai || chrome.aiAssistant;
-        if (!ai) {
-             console.log("AI Model not found on window or chrome");
-             return `Next up: ${data.newSongTitle} by ${data.newArtist}. Let's get it.`;
-        }
-        
-        // @ts-ignore
-        const capabilities = await ai.capabilities();
-        
-        if (capabilities.available === 'no') {
-             console.log("AI Model not available");
-             return `Next up: ${data.newSongTitle} by ${data.newArtist}. Let's get it.`;
-        }
-
-        // @ts-ignore
-        const session = await ai.create({
-            systemPrompt: RJ_SYSTEM_PROMPT
-        });
-
-        const prompt = `The current song "${data.oldSongTitle}" by "${data.oldArtist}" just finished. The next track is "${data.newSongTitle}" by "${data.newArtist}". 
-                        Output exactly the text that you will say to hype up the user, your ouput should just be the text that you as an RJ will say and nothing else.`;
-
-        // @ts-ignore
-        const response = await session.prompt(prompt);
-         
-        // @ts-ignore
-        session.destroy();
-        
-        return response;
-
-   } catch (err) {
-       console.error("RJ Model failed in offscreen:", err);
-       return `Stay tuned. We got ${data.newSongTitle} by ${data.newArtist} coming up next.`;
    }
 }

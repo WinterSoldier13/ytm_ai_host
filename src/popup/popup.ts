@@ -17,8 +17,8 @@ const statusText = document.getElementById('statusText') as HTMLElement;
 chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey'], (result: Partial<StorageSchema>) => {
     const isEnabled = result.isEnabled ?? true;
     const isDebugEnabled = result.isDebugEnabled ?? false;
-    const modelProvider = result.modelProvider || 'gemini';
-    const speechProvider = result.speechProvider || 'tts';
+    const modelProvider = result.modelProvider || 'gemini-api';
+    const speechProvider = result.speechProvider || 'gemini-api';
     const localServerPort = result.localServerPort || 8008;
     const geminiApiKey = result.geminiApiKey || '';
 

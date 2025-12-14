@@ -1,7 +1,6 @@
 import { MessageSchema } from '../utils/types';
 
 // Currently Gemini for Chrome is not available in all regions :(
-const USE_WEB_LLM = true;
 const introCache = new Map<string, Promise<string>>();
 const alreadyAnnounced = new Set<string>();
 
@@ -31,8 +30,8 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
             }
 
             const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey']);
-            const modelProvider = settings.modelProvider || 'gemini';
-            const speechProvider = settings.speechProvider || 'tts';
+            const modelProvider = settings.modelProvider || 'gemini-api';
+            const speechProvider = settings.speechProvider || 'gemini-api';
             const localServerPort = settings.localServerPort || 8008;
             const geminiApiKey = settings.geminiApiKey || '';
 
@@ -110,7 +109,7 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
       }, 2 * 60 * 1000);
 
       const settings = await chrome.storage.sync.get(['speechProvider', 'localServerPort', 'geminiApiKey']);
-      const speechProvider = settings.speechProvider || 'tts';
+      const speechProvider = settings.speechProvider || 'gemini-api';
       const localServerPort = settings.localServerPort || 8008;
       const geminiApiKey = settings.geminiApiKey || '';
 
@@ -182,5 +181,27 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     // If a tab navigates away from YTM, check if we should close
     if (changeInfo.status === 'complete') {
         checkOffscreen();
+    }
+});
+
+chrome.runtime.onInstalled.addListener(async (details) => {
+    const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider']);
+    const updates: any = {};
+
+    // 1. Migrate deprecated "Gemini (Chrome)" -> "Gemini API"
+    if (settings.modelProvider === 'gemini') {
+        console.log("Migrating modelProvider: gemini -> gemini-api");
+        updates.modelProvider = 'gemini-api';
+    }
+
+    // 2. Migrate default "Chrome TTS" -> "Gemini API"
+    if (settings.speechProvider === 'tts' || !settings.speechProvider) {
+         console.log("Migrating speechProvider: tts -> gemini-api");
+         updates.speechProvider = 'gemini-api';
+    }
+
+    if (Object.keys(updates).length > 0) {
+        await chrome.storage.sync.set(updates);
+        console.log("Settings migrated successfully.");
     }
 });
