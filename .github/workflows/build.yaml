@@ -1,0 +1,42 @@
+name: Build and Zip Extension
+
+# Trigger on push to main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Install Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Use a version compatible with your project
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 4: Run your build script
+      - name: Build extension
+        run: npm run build
+
+      # Step 5: Zip the 'dist' folder
+      # Change 'dist' below if your build output folder has a different name
+      - name: Zip output
+        run: cd dist && zip -r ../extension.zip .
+
+      # Step 6: Upload the zip file so you can download it
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension-build
+          path: extension.zip
