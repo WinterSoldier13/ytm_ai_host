@@ -214,11 +214,13 @@ export const getNextSongInQueue = (): UpcomingSong | null => {
   }
 };
 
-function handleTimeUpdate() {
+
+function get_status() {
     chrome.storage.sync.get(['isEnabled'], (result) => {
         // If Chrome extension is disabled
         if (!result.isEnabled) return; 
         // If paused, we don't need to do anything (music isn't progressing)
+        // Optimization: If paused, maybe we can poll slower? But 1s is fine.
         if (isSongPaused()) return;
 
         currentSong = getSongInfo();
@@ -279,38 +281,18 @@ function handleTimeUpdate() {
     });
 }
 
-function startObservers() {
-    log("Starting DOM Observers...");
+function startPolling() {
+    log("Starting Polling...");
 
-    const timeNode = document.evaluate(
-        currentSongTimerXPath,
-        document,
-        null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE,
-        null
-    ).singleNodeValue as Node;
-
-    if (!timeNode) {
-        console.warn("Nodes not ready, retrying in 1s...");
-        setTimeout(startObservers, 1000);
-        return;
-    }
-
+    // Initial check
     currentSong = getSongInfo();
     upcomingSong = getNextSongInQueue();
     log(`Setting Initial Song: ${currentSong.title}`);
 
-    const observerConfig = { characterData: true, subtree: true, childList: true };
-
-    const timeObserver = new MutationObserver((mutations) => {
-        // This fires basically every second or so
-        handleTimeUpdate();
-    });
-
-    timeObserver.observe(timeNode, observerConfig);
+    // Poll every 1 second
+    setInterval(get_status, 1000);
     
-    
-    log("Observers attached successfully. Watching for Time changes.");
+    log("Polling started successfully.");
 }
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
@@ -325,7 +307,8 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
 
 // Start watching
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startObservers);
+    document.addEventListener('DOMContentLoaded', startPolling);
 } else {
-    startObservers();
+    startPolling();
 }
+
