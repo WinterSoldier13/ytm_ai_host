@@ -107,15 +107,18 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     }
 
     const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
-    const prompt = `${RJ_SYSTEM_PROMPT}\n\nPrevious Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now:`;
+    const prompt = `Previous Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now:`;
 
     try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                system_instruction: {
+                    parts: [{ text: RJ_SYSTEM_PROMPT }]
+                },
                 contents: [{
                     parts: [{
                         text: prompt

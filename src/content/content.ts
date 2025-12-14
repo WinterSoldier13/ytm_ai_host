@@ -291,7 +291,7 @@ function startObservers() {
     ).singleNodeValue as Node;
 
     if (!timeNode) {
-        log("Nodes not ready, retrying in 1s...");
+        console.warn("Nodes not ready, retrying in 1s...");
         setTimeout(startObservers, 1000);
         return;
     }

@@ -8,6 +8,7 @@
 
 - **🗣️ AI Radio Jockey**: Generates context-aware, witty, and **high-energy** intros for upcoming songs. Meet **Cara**, your charismatic host who aggressively hypes up the transitions!
 - **🧠 Multiple AI Models**:
+  - **Gemini API (Recommended)**: Connects to Google's powerful Gemini 2.5 Flash model for free. Fast, high-quality, and reliable.
   - **Gemini Nano (Chrome Built-in)**: Zero latency, runs entirely in the browser using experimental Chrome AI APIs.
   - **WebLLM**: Runs powerful local LLMs (like Llama 3) directly in your browser using WebGPU.
   - **Local Server**: Connect to your own powerful local Python server for maximum control, custom models, and zero-compromise performance.
@@ -50,6 +51,11 @@
     - Enable **Developer mode** (top right).
     - Click **Load unpacked**.
     - Select the `dist` folder generated in your project directory.
+
+4.  **Get Your Free Gemini API Key**
+    - Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
+    - Click **Create API key**.
+    - Copy the key. You'll need it in the extension settings.
 
 ### Part 2: Local Server (Optional - For High Quality Voice & LLM)
 
@@ -113,6 +119,7 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 
 1.  Click the **AI DJ Cara** icon in your Chrome toolbar.
 2.  **Model Provider**:
+    - _Gemini API (Recommended)_: Uses Google's Cloud API. Requires a free API key.
     - _Gemini (Chrome)_: Uses Chrome's built-in AI (requires `chrome://flags` configuration).
     - _WebLLM_: Downloads and runs models in the browser via WebGPU.
     - _Local Server_: Connects to your running Python server for generation.
