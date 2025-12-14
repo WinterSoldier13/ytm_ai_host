@@ -33,14 +33,23 @@ async function fetchAudio(localServerPort: number, textToSpeak: string): Promise
     return url;
 }
 
-async function preloadAudio(payload: { localServerPort: number; textToSpeak: string }) {
+async function preloadAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api'; geminiApiKey?: string }) {
    if (audioCache.has(payload.textToSpeak)) {
        console.log("Audio already cached (or fetching) for:", payload.textToSpeak);
        return;
    }
    
    console.log("Starting Preload for:", payload.textToSpeak);
-   const audioPromise = fetchAudio(payload.localServerPort, payload.textToSpeak);
+
+   let audioPromise;
+   if (payload.speechProvider === 'localserver') {
+       const port = payload.localServerPort || 8008;
+       audioPromise = fetchAudio(port, payload.textToSpeak);
+   } else {
+       // Default to Gemini API
+       audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
+   }
+
    audioCache.set(payload.textToSpeak, audioPromise);
    
    try {
@@ -103,7 +112,11 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     }
 
     const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
-    const prompt = `Previous Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now:`;
+    // Random 1/3 chance to add witty fact
+    const addWittyFact = Math.floor(Math.random() * 3) + 1 === 3;
+    const extraInstruction = addWittyFact ? " Also, say a witty random fact." : "";
+
+    const prompt = `Previous Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now.${extraInstruction}`;
 
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
@@ -288,7 +301,12 @@ async function generateWithLocalServer(data: { oldSongTitle: string, oldArtist: 
    try {
        const port = data.localServerPort || 8008;
        const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
-       const prompt = `Previous: "${data.oldSongTitle}" by ${data.oldArtist}\nNext: "${data.newSongTitle}" by ${data.newArtist}\n${timeContext}`;
+
+       // Random 1/3 chance to add witty fact
+       const addWittyFact = Math.floor(Math.random() * 3) + 1 === 3;
+       const extraInstruction = addWittyFact ? " Also, say a witty random fact." : "";
+
+       const prompt = `Previous: "${data.oldSongTitle}" by ${data.oldArtist}\nNext: "${data.newSongTitle}" by "${data.newArtist}\n${timeContext}\n${extraInstruction}`;
        
        const response = await fetch(`http://localhost:${port}/generate`, {
            method: 'POST',
