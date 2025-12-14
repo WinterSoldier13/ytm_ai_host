@@ -1,7 +1,8 @@
 export interface StorageSchema {
     isEnabled: boolean;
     isDebugEnabled: boolean;
-    modelProvider: 'gemini' | 'webllm' | 'localserver';
+    modelProvider: 'gemini' | 'gemini-api' | 'webllm' | 'localserver';
+    geminiApiKey?: string;
     speechProvider: 'tts' | 'localserver';
     localServerPort: number;
 }
@@ -22,7 +23,8 @@ export type MessageSchema = {
         newSongTitle: string;
         newArtist: string;
         useWebLLM?: boolean; // Keep for backward compat or refactor logic to use modelProvider
-        modelProvider?: 'gemini' | 'webllm' | 'localserver';
+        modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver';
+        geminiApiKey?: string;
         localServerPort?: number;
         systemPrompt?: string;
         currentTime?: string;
@@ -37,7 +39,8 @@ export type MessageSchema = {
         newSongTitle: string;
         newArtist: string;
         useWebLLM?: boolean;
-        modelProvider?: 'gemini' | 'webllm' | 'localserver'; // Add this here too
+        modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; // Add this here too
+        geminiApiKey?: string;
         currentTime?: string;
     };
 } | {

@@ -30,10 +30,11 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
               });
             }
 
-            const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort']);
+            const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey']);
             const modelProvider = settings.modelProvider || 'gemini';
             const speechProvider = settings.speechProvider || 'tts';
             const localServerPort = settings.localServerPort || 8008;
+            const geminiApiKey = settings.geminiApiKey || '';
 
             const response = await chrome.runtime.sendMessage({
               type: 'GENERATE_RJ',
@@ -44,6 +45,7 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
                 newArtist,
                 useWebLLM: modelProvider === 'webllm', // fallback for now
                 modelProvider,
+                geminiApiKey,
                 localServerPort,
                 currentTime
               }

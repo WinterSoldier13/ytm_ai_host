@@ -84,7 +84,7 @@ async function preloadAudio(payload: { localServerPort: number; textToSpeak: str
    }
 }
 
-async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'webllm' | 'localserver'; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
+async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; geminiApiKey?: string; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
     // Backward compatibility or default logic
     const modelProvider = payload.modelProvider || (payload.useWebLLM ? 'webllm' : 'gemini');
 
@@ -92,8 +92,54 @@ async function handleGeneration(payload: { oldSongTitle: string; oldArtist: stri
         return generateWithLocalServer(payload);
     } else if (modelProvider === 'webllm') {
         return generateWithWebLLM(payload);
+    } else if (modelProvider === 'gemini-api') {
+        return generateWithGeminiAPI(payload);
     } else {
         return generateInOffscreen(payload); // Gemini (Chrome AI)
+    }
+}
+
+async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: string, newSongTitle: string, newArtist: string, geminiApiKey?: string, currentTime?: string }): Promise<string> {
+    const apiKey = data.geminiApiKey;
+    if (!apiKey) {
+        console.error("Gemini API Key is missing");
+        return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
+    }
+
+    const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
+    const prompt = `${RJ_SYSTEM_PROMPT}\n\nPrevious Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now:`;
+
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{
+                        text: prompt
+                    }]
+                }]
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error?.message || 'Gemini API failed');
+        }
+
+        const json = await response.json();
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!text) {
+             throw new Error("Invalid response format from Gemini API");
+        }
+        return text;
+
+    } catch (err) {
+        console.error("Gemini API request failed:", err);
+        return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
     }
 }
 
