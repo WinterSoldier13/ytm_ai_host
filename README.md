@@ -5,6 +5,7 @@
 **AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
 
 ## Why?
+
 Remember DJ Cara from NonStopPop FM in GTA V? Ja, I wanted something similar for my Playlists. If you decide to use local-server, you can even clone and use the exact voice :)
 
 ## Screenshot
@@ -13,19 +14,49 @@ Remember DJ Cara from NonStopPop FM in GTA V? Ja, I wanted something similar for
 
 ## Features
 
-*   **Gemini API Support**: Connects to Google's powerful Gemini models for high-quality, fast, and free generations.
-*   **WebLLM Support**: Runs powerful local LLMs directly in your browser using WebGPU for privacy and offline capability.
-*   **Local Server Support**: Connect to your own local Python server for maximum control, custom models, and zero-compromise performance.
-*   **Smart Caching & Pre-fetch**: Automatically anticipates song transitions, pre-generates scripts, and pre-fetches high-quality audio to ensure instant, seamless playback without delays.
-*   **Dynamic Speech**: Supports Chrome TTS, Kokoro JS (In-Browser), Local XTTS v2, and Gemini API for realistic voice output.
+- **Gemini API Support**: Connects to Google's powerful Gemini models for high-quality, fast, and free generations.
+- **WebLLM Support**: Runs powerful local LLMs directly in your browser using WebGPU for privacy and offline capability.
+- **Local Server Support**: Connect to your own local Python server for maximum control, custom models, and zero-compromise performance.
+- **Smart Caching & Pre-fetch**: Automatically anticipates song transitions, pre-generates scripts, and pre-fetches high-quality audio to ensure instant, seamless playback without delays.
+- **Dynamic Speech**: Supports Chrome TTS, Kokoro JS (In-Browser), Local XTTS v2, and Gemini API for realistic voice output.
 
-## Recommended way to use
+## Recommended Configurations
 
-The recommended way to use AI DJ Cara is with the **Gemini API**. It's fast, reliable, and offers a great balance of quality and performance.
+There are several ways to run AI DJ Cara depending on your hardware and privacy preferences. Here are the top recommendations:
 
-1.  **Get a Free API Key**: Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a free API key.
-2.  **Configure**: Enter your API key in the extension settings.
-3.  **Check Limits**: Be aware of the [rate limits for the free tier](https://ai.google.dev/gemini-api/docs/models/gemini#rate-limits).
+### 1. 🏆 The "Power User" Setup (Local Server)
+
+**Best for**: Maximum privacy, zero cost, and custom models.
+
+- **LLM**: Local Server (Llama 3.1 8B)
+- **TTS**: Local Server (XTTS v2)
+- **Why**: This gives you the best control. Takes advantage of your GPU for fast inference and realistic voices.
+
+### 2. 💎 The "Premium" Experience (Gemini API)
+
+**Best for**: Highest quality text generation and realistic speech.
+
+- **LLM**: Gemini API
+- **TTS**: Gemini API
+- **Why**: Google's models are state-of-the-art.
+- **Note**: The author uses this personally. However, be aware that this gets costly pretty quickly.
+
+### 3. ⚖️ The Balanced Choice (Gemini + Kokoro)
+
+**Best for**: High quality text with fast, unlimited speech.
+
+- **LLM**: Gemini API
+- **TTS**: Kokoro JS (In-Browser)
+- **Why**: You get the wit of Gemini for the script, but the speed and zero-cost of local in-browser TTS with Kokoro. Great middle ground.
+
+### 4. 🔒 The Fully Offline Browser Setup (WebLLM + Kokoro)
+
+**Best for**: Privacy enthusiasts without a separate server.
+
+- **LLM**: WebLLM (In-Browser Llama)
+- **TTS**: Kokoro JS (In-Browser)
+- **Why**: Everything runs inside Chrome. No data leaves your machine, and no separate python server is needed.
+- **Requirement**: You must compile the extension with `npm run build -- --env webllm`.
 
 ## Download
 
@@ -124,21 +155,22 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 
 ## Configuration
 
-*   **Model Provider**: Choose between Gemini API (recommended), WebLLM, or Local Server.
-*   **Speech Provider**: Select the voice service (Gemini API, Kokoro JS, Chrome TTS, or Local Server).
-*   **API Key**: Enter your Gemini API key if using the Gemini API provider.
-*   **Local Server Port**: Set the port for your local server (default is 8008) if using the Local Server provider.
+- **Model Provider**: Choose between Gemini API (recommended), WebLLM, or Local Server.
+- **Speech Provider**: Select the voice service (Gemini API, Kokoro JS, Chrome TTS, or Local Server).
+- **API Key**: Enter your Gemini API key if using the Gemini API provider.
+- **Local Server Port**: Set the port for your local server (default is 8008) if using the Local Server provider.
 
 ## FAQ
 
-*   **Local Server Performance**: To use the local server effectively for fast responses, you should have a GPU with CUDA support.
-*   **Debugging**: If you encounter issues, enable "Debug Mode" in the extension settings. Then, check the console logs of the YouTube Music tab, the extension's service worker, and the `offscreen.html` page (accessible via `chrome://extensions` -> Details -> Inspect views).
-*   **Gemini API Limits**: If the extension stops working suddenly while using the Gemini API, you may have hit the rate limits.
+- **Local Server Performance**: To use the local server effectively for fast responses, you should have a GPU with CUDA support.
+- **Debugging**: If you encounter issues, enable "Debug Mode" in the extension settings. Then, check the console logs of the YouTube Music tab, the extension's service worker, and the `offscreen.html` page (accessible via `chrome://extensions` -> Details -> Inspect views).
+- **Gemini API Limits**: If the extension stops working suddenly while using the Gemini API, you may have hit the rate limits.
 
 ## Contribution
 
 Please create an Issue first to discuss your ideas before working on a PR.
-*   **Good First Issue**: Integrating AI DJ Cara with Spotify Web would be a fantastic contribution!
+
+- **Good First Issue**: Integrating AI DJ Cara with Spotify Web would be a fantastic contribution!
 
 ## LICENSE
 
