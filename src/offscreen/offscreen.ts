@@ -84,6 +84,7 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
 async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; geminiApiKey?: string; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
     // Default to gemini-api if not specified
     const modelProvider = payload.modelProvider || 'gemini-api';
+    console.log(`Generating RJ intro using LLM provider: ${modelProvider}`);
     let generationPromise: Promise<string>;
 
     if (modelProvider === 'localserver') {
