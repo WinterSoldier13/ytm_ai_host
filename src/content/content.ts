@@ -195,7 +195,21 @@ export const getNextSongInQueue = (): UpcomingSong | null => {
 
     // Determine the current Row (the entire wrapper if it exists, otherwise the item)
     const currentRow = currentItem.closest(SELECTORS.WRAPPER) || currentItem;
-    const nextRow = currentRow.nextElementSibling as HTMLElement;
+    let nextRow = currentRow.nextElementSibling as HTMLElement;
+
+    // If no sibling, check if we need to cross the "Autoplay" boundary
+    if (!nextRow) {
+        const contentsContainer = currentRow.closest('#contents');
+        if (contentsContainer) {
+             const queueContainer = contentsContainer.parentElement; // ytmusic-player-queue
+             if (queueContainer) {
+                 const automixContainer = queueContainer.querySelector('#automix-contents');
+                 if (automixContainer) {
+                     nextRow = automixContainer.firstElementChild as HTMLElement;
+                 }
+             }
+        }
+    }
 
     if (!nextRow) return null;
 
