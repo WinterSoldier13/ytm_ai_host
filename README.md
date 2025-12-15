@@ -4,6 +4,9 @@
 
 **AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
 
+## Why?
+Remember DJ Cara from NonStopPop FM in GTA V? Ja, I wanted something similar for my Playlists. If you decide to use local-server, you can even clone and use the exact voice :)
+
 ## Screenshot
 
 ![Screenshot](images/image1.png)
