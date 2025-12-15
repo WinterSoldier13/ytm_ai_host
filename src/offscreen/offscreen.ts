@@ -155,13 +155,17 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     const apiKey = data.geminiApiKey;
     if (!apiKey) {
         console.error("Gemini API Key is missing");
-        return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
+        return `Error in Gemini LLM. Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
     }
 
     const timeContext = data.currentTime ? ` Current time: ${data.currentTime}.` : "";
     // Random 1/3 chance to add witty fact
-    const addWittyFact = Math.floor(Math.random() * 3) + 1 === 3;
-    const extraInstruction = addWittyFact ? " Also, say a witty random fact." : "";
+    const aRandomNumber = Math.random();
+    const addWittyFact = Math.floor(aRandomNumber * 3) + 1 === 3;
+    const addWeatherInfo = Math.floor(aRandomNumber * 5) + 1 === 5; // 1/5 chance to add weather info
+    const addNewsInfo = Math.floor(aRandomNumber * 10) + 1 === 10; // 1/10 chance to add news info
+
+    const extraInstruction = addWittyFact ? " Also, say a witty fact related to the songs that you can think of." : "";
 
     const prompt = `Previous Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now.${extraInstruction}`;
 
