@@ -158,6 +158,10 @@ const togglePlayer = (): void => {
 };
 
 export const isSongPaused = (): boolean => {
+    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
+    if (media){
+        return media.paused;
+    }
     const pathElement = document.querySelector('#play-pause-button yt-icon path');
 
     if (!pathElement) {
