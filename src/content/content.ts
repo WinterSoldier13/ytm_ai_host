@@ -6,18 +6,21 @@ import { IntervalLogger } from '../utils/interval_logger';
 const INDICATOR_ID = 'ai-rj-mode-indicator';
 const PLAY_PATH = "M5 4.623V19.38a1.5 1.5 0 002.26 1.29L22 12 7.26 3.33A1.5 1.5 0 005 4.623Z";
 
+// Target the main video player specifically
+const VIDEO_SELECTOR = 'video.html5-main-video';
+
 const SELECTORS = {
   TITLE: '.song-title',
-  ARTIST: '.byline',
-  // The time display: "2:30 / 3:56"
-  TIME_INFO: '.time-info' 
+  ARTIST: '.byline'
 } as const;
 
 // --- State Variables ---
 
 let upcomingSong: UpcomingSong | null = null;
+let officialDuration: number = 0; // The source of truth from Injector
 let videoElement: HTMLMediaElement | null = null;
 
+// Sets to track processed songs
 const prewarmedSongs = new Set<string>();
 const alertedSongs = new Set<string>();
 const MAX_SET_SIZE = 50;
@@ -38,21 +41,6 @@ function log(message: any, ...args: any[]) {
     }
 }
 
-// --- Helper: Time Parser ---
-
-// Converts "3:56" or "1:02:30" to seconds
-function parseTimeStr(timeStr: string): number {
-    if (!timeStr) return 0;
-    const parts = timeStr.trim().split(':').map(Number);
-    if (parts.length === 2) {
-        return parts[0] * 60 + parts[1];
-    }
-    if (parts.length === 3) {
-        return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-    return 0;
-}
-
 // --- Initialization ---
 
 function init() {
@@ -62,11 +50,15 @@ function init() {
 
         updateAIRJModeIndicator();
         
+        // 1. Start Fast Event Loop (Video Time Updates)
         setupVideoListener();
+        
+        // 2. Start Slow Data Loop (Sync Duration/Metadata from Injector)
         startBackgroundPolling();
     });
 }
 
+// Listen for settings changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'sync') {
         if (changes.isDebugEnabled) isDebug = changes.isDebugEnabled.newValue;
@@ -126,6 +118,7 @@ export const isSongPaused = (): boolean => {
 export const click_play_pause = (): void => {
     const button = document.querySelector('#play-pause-button') as HTMLElement | null;
     if (button) button.click();
+    else log(new Error("Could not find #play-pause-button"));
 };
 
 export const pauseSong = (): void => {
@@ -146,62 +139,8 @@ export const resumeSong = (): void => {
 
 // --- Data Fetching ---
 
-function getSongInfo(): CurrentSong {
-    try {
-        const video = document.querySelector('video') as HTMLMediaElement | null;
-        
-        let currentTime = 0;
-        let duration = 0; // Will override this with DOM data
-        let isPaused = true;
-
-        if (video) {
-            currentTime = video.currentTime; 
-            isPaused = video.paused;
-        }
-
-        // 1. Metadata from MediaSession (Fastest)
-        const metadata = navigator.mediaSession?.metadata;
-        let title = metadata?.title || "";
-        let artist = metadata?.artist || "";
-        let album = metadata?.album || "";
-
-        // 2. Metadata from DOM (Fallback & Duration Source)
-        if (!title) {
-            title = document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || "";
-            const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || "";
-            const parts = byline.split('•').map(s => s.trim());
-            artist = parts[0] || "";
-            album = parts[1] || "";
-        }
-
-        // 3. CRITICAL FIX: Get Duration from DOM text ("2:30 / 3:56")
-        // We trust this visual duration over the video.duration
-        const timeInfo = document.querySelector('.time-info')?.textContent?.trim();
-        if (timeInfo) {
-            const parts = timeInfo.split('/');
-            if (parts.length === 2) {
-                // Parse the second part ("3:56")
-                const domDuration = parseTimeStr(parts[1]);
-                if (domDuration > 0) {
-                    duration = domDuration;
-                }
-            }
-        }
-        
-        // Fallback: If DOM scrape failed, use video duration, but warn
-        if (duration === 0 && video && Number.isFinite(video.duration)) {
-            duration = video.duration;
-        }
-
-        return { title, artist, album, duration, currentTime, isPaused };
-
-    } catch (e) {
-        console.error('getSongInfo error', e);
-        return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
-    }
-}
-
-function fetchUpcomingSong(): Promise<UpcomingSong | null> {
+// Requests both the upcoming song AND the correct duration from Injector
+function fetchSyncData(): Promise<{ upcoming: UpcomingSong | null, duration: number } | null> {
   return new Promise((resolve) => {
     const handleResponse = (event: Event) => {
       const customEvent = event as CustomEvent;
@@ -212,6 +151,7 @@ function fetchUpcomingSong(): Promise<UpcomingSong | null> {
     document.addEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
     document.dispatchEvent(new CustomEvent('YTM_EXTENSION_REQUEST_DATA'));
     
+    // Timeout
     setTimeout(() => {
       document.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
       resolve(null);
@@ -219,10 +159,59 @@ function fetchUpcomingSong(): Promise<UpcomingSong | null> {
   });
 }
 
+function getSongInfo(): CurrentSong {
+    try {
+        const video = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement | null;
+        
+        let currentTime = 0;
+        let isPaused = true;
+
+        if (video) {
+            currentTime = video.currentTime; 
+            isPaused = video.paused;
+        }
+
+        // 1. Metadata (MediaSession is fastest)
+        const metadata = navigator.mediaSession?.metadata;
+        let title = metadata?.title || "";
+        let artist = metadata?.artist || "";
+        let album = metadata?.album || "";
+
+        // 2. DOM Fallback
+        if (!title) {
+            title = document.querySelector(SELECTORS.TITLE)?.textContent?.trim() || "";
+            const byline = document.querySelector(SELECTORS.ARTIST)?.textContent || "";
+            // Parse "Artist • Album • Year"
+            const parts = byline.split('•').map(s => s.trim());
+            artist = parts[0] || "";
+            album = parts[1] || "";
+        }
+
+        // 3. DURATION LOGIC
+        // Priority 1: Official Duration from Injector (Fixed Value)
+        // Priority 2: Video Duration (Fallback, might be wrong for Music Videos)
+        const finalDuration = (officialDuration > 0) ? officialDuration : (video?.duration || 0);
+
+        return { 
+            title, 
+            artist, 
+            album, 
+            duration: Number.isFinite(finalDuration) ? finalDuration : 0, 
+            currentTime, 
+            isPaused 
+        };
+
+    } catch (e) {
+        console.error('getSongInfo error', e);
+        return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
+    }
+}
+
 // --- The Core Engine ---
 
 function setupVideoListener() {
-    const video = document.querySelector('video');
+    const video = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement;
+    
     if (!video) {
         setTimeout(setupVideoListener, 500); 
         return;
@@ -230,11 +219,16 @@ function setupVideoListener() {
     
     if (videoElement === video) return;
     
+    if (videoElement) {
+        videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+    }
+
     videoElement = video;
-    log("✅ Attached AI DJ listener to video element.");
+    log("✅ Attached AI DJ listener to MAIN video element.");
 
     video.addEventListener('timeupdate', handleTimeUpdate);
     
+    // If YTM swaps the player, re-attach
     video.addEventListener('emptied', () => {
         log("Video emptied. Re-checking...");
         setTimeout(setupVideoListener, 1000);
@@ -244,29 +238,36 @@ function setupVideoListener() {
 function handleTimeUpdate() {
     if (!isEnabled || !videoElement || videoElement.paused) return;
 
-    // Use getSongInfo() to get the DOM-based duration
+    // Use cached Official Duration if available
+    const duration = officialDuration > 0 ? officialDuration : videoElement.duration;
+    const currentTime = videoElement.currentTime;
+
+    if (!Number.isFinite(duration)) return;
+
+    // CALCULATE PRECISE TIME LEFT
+    // Because 'duration' is the Official Song Length, subtracting 'currentTime'
+    // gives us the real countdown to the UI's 0:00, ignoring any hidden video outro.
+    const timeRemaining = duration - currentTime;
+
     const currentInfo = getSongInfo();
-    
-    if (!currentInfo.title || currentInfo.duration === 0) return;
+    if (!currentInfo.title) return;
 
-    // Calc time remaining using: (DOM Total Time) - (Video Current Time)
-    const timeRemaining = currentInfo.duration - currentInfo.currentTime;
-
+    // Keying
     const nextTitle = upcomingSong?.title || "PENDING";
     const songKey = `${currentInfo.title}::${nextTitle}`;
 
     if (isDebug) {
-        interval_logger.log(`Time Left: ${timeRemaining.toFixed(3)}s | Key: ${songKey} | Dur: ${currentInfo.duration}`);
+        interval_logger.log(`Left: ${timeRemaining.toFixed(3)}s | Key: ${songKey} | OfficialDur: ${officialDuration.toFixed(1)}`);
     }
 
+    // Cleanup memory
     if (prewarmedSongs.size > MAX_SET_SIZE) prewarmedSongs.clear();
     if (alertedSongs.size > MAX_SET_SIZE) alertedSongs.clear();
 
-    // --- PRE-WARM ---
-    const progress = currentInfo.currentTime / currentInfo.duration;
-    if (progress > 0.2) {
+    // --- LOGIC A: PRE-WARM ---
+    if (duration > 0 && (currentTime / duration) > 0.2) {
         if (upcomingSong && !prewarmedSongs.has(songKey)) {
-            log(`Pre-warming for ${songKey}`);
+            log(`Pre-warming RJ model for ${songKey}`);
             prewarmedSongs.add(songKey);
             
             chrome.runtime.sendMessage({
@@ -282,36 +283,45 @@ function handleTimeUpdate() {
         }
     }
 
-    // --- TRIGGER ---
+    // --- LOGIC B: THE TRIGGER ---
     if (!alertedSongs.has(songKey)) {
-        // Window: 2.2s to -5.0s (Negative allowed because video might run longer than DOM time)
-        // Check upper bound (2.2s) and sane lower bound (e.g. -10s)
-        if (timeRemaining <= 2.2 && timeRemaining > -10 && currentInfo.duration > 10) {
-            
-            log(`🔥 TIME HIT: ${timeRemaining.toFixed(3)}s remaining. PAUSING.`);
-            
-            pauseSong();
-            alertedSongs.add(songKey);
-
-            (async () => {
-                if (!upcomingSong) {
-                    log("Panic fetching next song...");
-                    upcomingSong = await fetchUpcomingSong();
-                }
-
-                const message: MessageSchema = {
-                    type: 'SONG_ABOUT_TO_END',
-                    payload: {
-                        currentSongTitle: currentInfo.title,
-                        currentSongArtist: currentInfo.artist,
-                        upcomingSongTitle: upcomingSong?.title || 'Unknown Song',
-                        upcomingSongArtist: upcomingSong?.artist || 'Unknown Artist'
-                    }
-                };
+        // Trigger if:
+        // 1. We are within 2.2s of the Official End
+        // 2. OR: We have gone PAST the Official End (currentTime > duration)
+        //    (This handles "Music Video" outros where video plays longer than song)
+        // 3. AND: The song has played for at least 10s (prevents triggers on skipped tracks)
+        if ((timeRemaining <= 2.2 && timeRemaining > -5) || (currentTime >= duration)) {
+            if (duration > 10) { // Sane duration check
                 
-                log("Sending Alert Message:", message);
-                chrome.runtime.sendMessage(message);
-            })();
+                log(`🔥 TRIGGER HIT! TimeLeft: ${timeRemaining.toFixed(3)}s. PAUSING.`);
+                
+                pauseSong();
+                alertedSongs.add(songKey);
+
+                (async () => {
+                    // Final check for next song data
+                    if (!upcomingSong) {
+                        const data = await fetchSyncData();
+                        if (data) {
+                            upcomingSong = data.upcoming;
+                            officialDuration = data.duration;
+                        }
+                    }
+
+                    const message: MessageSchema = {
+                        type: 'SONG_ABOUT_TO_END',
+                        payload: {
+                            currentSongTitle: currentInfo.title,
+                            currentSongArtist: currentInfo.artist,
+                            upcomingSongTitle: upcomingSong?.title || 'Unknown Song',
+                            upcomingSongArtist: upcomingSong?.artist || 'Unknown Artist'
+                        }
+                    };
+                    
+                    log("Sending Alert Message:", message);
+                    chrome.runtime.sendMessage(message);
+                })();
+            }
         }
     }
 }
@@ -319,16 +329,23 @@ function handleTimeUpdate() {
 // --- Background Tasks ---
 
 function startBackgroundPolling() {
-    log("Starting Background Polling...");
-    fetchUpcomingSong().then(data => { if(data) upcomingSong = data; });
-
-    setInterval(() => {
+    log("Starting Sync...");
+    
+    const sync = () => {
+        // Only fetch if playing (saves resources)
         if (!isSongPaused()) {
-            fetchUpcomingSong().then(data => {
-                if (data) upcomingSong = data;
+            fetchSyncData().then(data => { 
+                if(data) {
+                    upcomingSong = data.upcoming;
+                    // Update our "Source of Truth" for duration
+                    if (data.duration > 0) officialDuration = data.duration;
+                }
             });
         }
-    }, 2000);
+    };
+
+    sync(); // Initial fetch
+    setInterval(sync, 2000); // Loop every 2s
 }
 
 // --- Message Listeners ---

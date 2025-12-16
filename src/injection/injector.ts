@@ -1,5 +1,13 @@
 import { UpcomingSong } from "../utils/types"; 
 
+function getPlayerDuration(): number {
+  const player = document.getElementById('movie_player') as any;
+  if (player && typeof player.getDuration === 'function') {
+    return player.getDuration(); // Returns seconds (e.g. 236.5)
+  }
+  return 0;
+}
+
 function getNextSongData(): UpcomingSong | null {
   const queueEl = document.querySelector('ytmusic-player-queue') as any;
   
@@ -48,7 +56,10 @@ function getNextSongData(): UpcomingSong | null {
 // --- LISTENER ---
 // Listen for the specific request from the Content Script
 document.addEventListener('YTM_EXTENSION_REQUEST_DATA', () => {
-  const data = getNextSongData();
+  const data = {
+    upcoming: getNextSongData(),
+    duration: getPlayerDuration()
+  };
   
   // Dispatch the response back
   document.dispatchEvent(new CustomEvent('YTM_EXTENSION_RETURN_DATA', {
