@@ -27,12 +27,12 @@ const SELECTORS = {
 const INDICATOR_ID = 'ai-rj-mode-indicator';
 
 // --- State Variables ---
-
-let hasAlertedForCurrentSong = false;
 let currentSong: CurrentSong | null = null;
 let upcomingSong: UpcomingSong | null = null;
-let hasPrewarmed = false;
-let lastSongKey = "";
+
+const prewarmedSongs = new Set<string>();
+const alertedSongs = new Set<string>();
+
 let isDebug = false;
 let isEnabled = true;
 let isFirstSong = true;
@@ -317,18 +317,16 @@ function get_status() {
         isFirstSong = false;
     }
 
-    // Check if song changed to reset prewarm flag
-    const songKey = `${currentSong.title}-${currentSong.artist}`;
-    if (songKey !== lastSongKey) {
-        hasPrewarmed = false;
-        lastSongKey = songKey;
-    }
+    // Key for state tracking: Current Title + Upcoming Title
+    if (!upcomingSong) return;
+    const songKey = currentSong.title + upcomingSong.title;
 
     // Pre-warm checking
     const progress = currentSong.currentTime / currentSong.duration;
-    if (progress > 0.2 && !hasPrewarmed && upcomingSong) {
-        log("Song > 20%. Pre-warming RJ model...");
-        hasPrewarmed = true;
+    if (progress > 0.1 && !prewarmedSongs.has(songKey)) {
+        log(`Song > 10%. Pre-warming RJ model for key: ${songKey}`);
+        prewarmedSongs.add(songKey);
+        
         const message: MessageSchema = {
             type: 'PREWARM_RJ',
             payload: {
@@ -342,12 +340,13 @@ function get_status() {
         chrome.runtime.sendMessage(message);
     }
 
+    // Alert checking
     const timeRemaining = currentSong.duration - currentSong.currentTime;
-    if(timeRemaining>2) return;
+    if(timeRemaining > 2 || alertedSongs.has(songKey)) return;
 
-    log(`Song ending in 2s. Triggering pause.`);
+    log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
     pauseSong();
-    hasAlertedForCurrentSong = true;
+    alertedSongs.add(songKey);
 
     const message: MessageSchema = {
         type: 'SONG_ABOUT_TO_END',
