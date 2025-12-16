@@ -505,7 +505,7 @@ function get_status() {
     if (alertedSongs.has(songKey)) return;
 
     // Condition: Time < 2s AND duration is reasonable (>10s to avoid ads/glitches?)
-    if (timeRemaining <= 2 && isSongPaused() && timeRemaining > 0 && currentSong.duration > 10) {
+    if (timeRemaining <= 2 && timeRemaining > 0 && currentSong.duration > 10) {
         pauseSong();
         log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
         alertedSongs.add(songKey);
