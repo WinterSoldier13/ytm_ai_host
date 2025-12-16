@@ -1,4 +1,5 @@
 import { MessageSchema, CurrentSong, UpcomingSong } from '../utils/types';
+import { IntervalLogger } from '../utils/interval_logger';
 
 // --- Constants ---
 
@@ -7,6 +8,8 @@ const currentSongNameXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-
 const currentSongAlbumNameXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]/div[2]/span/span[2]/yt-formatted-string/a[3]';
 const currentSongTimerXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[1]/span';
 const musicBarXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]';
+
+const interval_logger = new IntervalLogger(5000);
 
 // SVG Path constants for comparison
 const PLAY_PATH = "M5 4.623V19.38a1.5 1.5 0 002.26 1.29L22 12 7.26 3.33A1.5 1.5 0 005 4.623Z";
@@ -281,8 +284,8 @@ function getSongInfo(): CurrentSong {
         let isPaused = false;
 
         if (video) {
-            duration = Number.isNaN(video.duration) ? 0 : video.duration;
-            currentTime = video.currentTime; 
+            duration = Number.isNaN(video.duration) ? 0 : Math.floor(video.duration);
+            currentTime = Math.floor(video.currentTime); 
             isPaused = video.paused;
         }
 
@@ -450,7 +453,9 @@ function get_status() {
         }
     });
 
-    log(`--- Status Check --- ${currentSong.title}::${upcomingSong?.title} ---`);
+    if(isDebug){
+    interval_logger.log(`--- Status Check --- ${currentSong.title}::${upcomingSong?.title} ---`);
+    }
 
     if (currentSong.title === '') {
         return;
@@ -478,8 +483,8 @@ function get_status() {
     // Using a safe range instead of strict > 0.1, to avoid re-triggering if user seeks back.
     // However, the Set handles the 'once per session' check.
     const progress = currentSong.currentTime / currentSong.duration;
-    if (progress > 0.1 && !prewarmedSongs.has(songKey)) {
-        log(`Song > 10%. Pre-warming RJ model for key: ${songKey}`);
+    if (progress > 0.2 && !prewarmedSongs.has(songKey)) {
+        log(`Song > 20%. Pre-warming RJ model for key: ${songKey}`);
         prewarmedSongs.add(songKey);
         
         const message: MessageSchema = {
@@ -495,16 +500,15 @@ function get_status() {
         chrome.runtime.sendMessage(message);
     }
 
-    // Alert checking
     const timeRemaining = currentSong.duration - currentSong.currentTime;
 
     // Check if we already alerted for this song pair
     if (alertedSongs.has(songKey)) return;
 
-    // Condition: Time < 2s AND not paused AND duration is reasonable (>10s to avoid ads/glitches?)
-    if (timeRemaining <= 2 && timeRemaining > 0 && currentSong.duration > 10) {
-        log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
+    // Condition: Time < 2s AND duration is reasonable (>10s to avoid ads/glitches?)
+    if (timeRemaining <= 2 && isSongPaused() && timeRemaining > 0 && currentSong.duration > 10) {
         pauseSong();
+        log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
         alertedSongs.add(songKey);
 
         const message: MessageSchema = {
