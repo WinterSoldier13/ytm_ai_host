@@ -6,6 +6,9 @@ import { IntervalLogger } from '../utils/interval_logger';
 const INDICATOR_ID = 'ai-rj-mode-indicator';
 const PLAY_PATH = "M5 4.623V19.38a1.5 1.5 0 002.26 1.29L22 12 7.26 3.33A1.5 1.5 0 005 4.623Z";
 
+// CRITICAL FIX: Target the specific main video player, ignoring preloaders/ads
+const VIDEO_SELECTOR = 'video.html5-main-video';
+
 /**
  * Configuration constants for DOM selectors and attributes.
  */
@@ -55,7 +58,7 @@ function init() {
         updateAIRJModeIndicator();
         
         // Start the engines
-        setupVideoListener();      // Fast loop (Precision Timing)
+        setupVideoListener();      // Fast loop (Precision Timing via Event)
         startBackgroundPolling();  // Slow loop (Metadata Fetching)
     });
 }
@@ -114,7 +117,7 @@ function updateAIRJModeIndicator() {
 // --- Playback Controls ---
 
 export const isSongPaused = (): boolean => {
-    const media = document.querySelector('video') as HTMLMediaElement | null;
+    const media = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement | null;
     if (media) return media.paused;
     
     // Fallback to DOM Icon check
@@ -129,7 +132,7 @@ export const click_play_pause = (): void => {
 };
 
 export const pauseSong = (): void => {
-    const media = document.querySelector('video') as HTMLMediaElement | null;
+    const media = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement | null;
     if (media && !media.paused) {
         media.pause();
     } else if (!media && !isSongPaused()) {
@@ -138,7 +141,7 @@ export const pauseSong = (): void => {
 };
 
 export const resumeSong = (): void => {
-    const media = document.querySelector('video') as HTMLMediaElement | null;
+    const media = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement | null;
     if (media && media.paused) {
         media.play().catch(e => log("Error playing media:", e));
     } else if (!media && isSongPaused()) {
@@ -150,7 +153,8 @@ export const resumeSong = (): void => {
 
 function getSongInfo(): CurrentSong {
     try {
-        const video = document.querySelector('video') as HTMLMediaElement | null;
+        // Use specific selector to avoid grabbing preloader videos
+        const video = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement | null;
         
         let duration = 0;
         let currentTime = 0;
@@ -158,6 +162,7 @@ function getSongInfo(): CurrentSong {
 
         if (video) {
             // FIX: Using raw float for precision. No Math.floor()!
+            // isFinite check handles live streams (Infinity) or loading (NaN)
             duration = Number.isFinite(video.duration) ? video.duration : 0;
             currentTime = video.currentTime; 
             isPaused = video.paused;
@@ -208,7 +213,9 @@ function fetchUpcomingSong(): Promise<UpcomingSong | null> {
 // --- The Core Engine (Event Driven) ---
 
 function setupVideoListener() {
-    const video = document.querySelector('video');
+    // FIX: Select only the main video player
+    const video = document.querySelector(VIDEO_SELECTOR) as HTMLMediaElement;
+    
     if (!video) {
         // Retry logic if video tag isn't inserted yet
         setTimeout(setupVideoListener, 500); 
@@ -217,20 +224,33 @@ function setupVideoListener() {
     
     if (videoElement === video) return; // Already attached
     
+    // Cleanup old listener if swapping elements
+    if (videoElement) {
+        videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+    }
+
     videoElement = video;
-    log("✅ Attached AI DJ listener to video element.");
+    log("✅ Attached AI DJ listener to MAIN video element.");
 
     // The heartbeat of the extension: Fires ~4 times/sec
     video.addEventListener('timeupdate', handleTimeUpdate);
     
-    // Handle song changes (reset processed sets if needed, though keying handles this)
-    video.addEventListener('loadeddata', () => {
-        log("New video loaded data.");
+    // Handle song changes / player swaps
+    video.addEventListener('emptied', () => {
+        log("Video element emptied. Re-checking...");
+        setTimeout(setupVideoListener, 1000);
     });
 }
 
 function handleTimeUpdate() {
-    if (!isEnabled || !videoElement || videoElement.paused) return;
+    // Re-verify attachment
+    if (!videoElement || !videoElement.isConnected) {
+        log("Video disconnected. Re-attaching...");
+        setupVideoListener();
+        return;
+    }
+
+    if (!isEnabled || videoElement.paused) return;
 
     const duration = videoElement.duration;
     const currentTime = videoElement.currentTime;
@@ -246,12 +266,11 @@ function handleTimeUpdate() {
     if (!currentInfo.title) return;
 
     // 3. Generate a Unique Key for this transition
-    // We use "PENDING" if upcoming isn't fetched yet so we don't crash, 
-    // but the actual alert will retry fetching.
+    // We use "PENDING" if upcoming isn't fetched yet so we don't crash.
     const nextTitle = upcomingSong?.title || "PENDING";
     const songKey = `${currentInfo.title}::${nextTitle}`;
 
-    // Debug logging (throttled)
+    // Debug logging (throttled by IntervalLogger)
     if (isDebug) {
         interval_logger.log(`Time Left: ${timeRemaining.toFixed(3)}s | Key: ${songKey}`);
     }
@@ -282,7 +301,6 @@ function handleTimeUpdate() {
     }
 
     // --- LOGIC B: THE TRIGGER (Pause at 2s left) ---
-    // We do NOT check for !upcomingSong here. We pause first, ask questions later.
     if (!alertedSongs.has(songKey)) {
         // Window: 2.2s to 0.2s (avoid 0.0s edge cases)
         // Duration check: >10s to ignore short ads/sounds
@@ -290,7 +308,7 @@ function handleTimeUpdate() {
             
             log(`🔥 TIME HIT: ${timeRemaining.toFixed(3)}s remaining. PAUSING.`);
             
-            // 1. Pause
+            // 1. Pause Immediately
             pauseSong();
             alertedSongs.add(songKey);
 
