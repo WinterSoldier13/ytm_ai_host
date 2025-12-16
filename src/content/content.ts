@@ -6,20 +6,18 @@ import { IntervalLogger } from '../utils/interval_logger';
 const INDICATOR_ID = 'ai-rj-mode-indicator';
 const PLAY_PATH = "M5 4.623V19.38a1.5 1.5 0 002.26 1.29L22 12 7.26 3.33A1.5 1.5 0 005 4.623Z";
 
-/**
- * Configuration constants for DOM selectors.
- */
 const SELECTORS = {
   TITLE: '.song-title',
-  ARTIST: '.byline'
+  ARTIST: '.byline',
+  // The time display: "2:30 / 3:56"
+  TIME_INFO: '.time-info' 
 } as const;
 
 // --- State Variables ---
 
 let upcomingSong: UpcomingSong | null = null;
-let activeVideoElement: HTMLMediaElement | null = null;
+let videoElement: HTMLMediaElement | null = null;
 
-// Sets to track processed songs
 const prewarmedSongs = new Set<string>();
 const alertedSongs = new Set<string>();
 const MAX_SET_SIZE = 50;
@@ -40,6 +38,21 @@ function log(message: any, ...args: any[]) {
     }
 }
 
+// --- Helper: Time Parser ---
+
+// Converts "3:56" or "1:02:30" to seconds
+function parseTimeStr(timeStr: string): number {
+    if (!timeStr) return 0;
+    const parts = timeStr.trim().split(':').map(Number);
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return 0;
+}
+
 // --- Initialization ---
 
 function init() {
@@ -49,15 +62,11 @@ function init() {
 
         updateAIRJModeIndicator();
         
-        // 1. Start the Heartbeat (Finds the right video)
-        setInterval(ensureActiveVideoListener, 1000);
-        
-        // 2. Start Background Polling (Fetches metadata)
+        setupVideoListener();
         startBackgroundPolling();
     });
 }
 
-// Listen for settings changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'sync') {
         if (changes.isDebugEnabled) isDebug = changes.isDebugEnabled.newValue;
@@ -109,12 +118,9 @@ function updateAIRJModeIndicator() {
 // --- Playback Controls ---
 
 export const isSongPaused = (): boolean => {
-    // Trust the active element if we have one
-    if (activeVideoElement) return activeVideoElement.paused;
-    
-    // Fallback: Check all videos, return true only if ALL are paused
-    const videos = Array.from(document.querySelectorAll('video'));
-    return videos.every(v => v.paused);
+    if (videoElement) return videoElement.paused;
+    const pathElement = document.querySelector('#play-pause-button yt-icon path');
+    return pathElement?.getAttribute('d') === PLAY_PATH;
 };
 
 export const click_play_pause = (): void => {
@@ -123,18 +129,17 @@ export const click_play_pause = (): void => {
 };
 
 export const pauseSong = (): void => {
-    if (activeVideoElement && !activeVideoElement.paused) {
-        activeVideoElement.pause();
-    } else {
-        // Fallback: Click the button
+    if (videoElement && !videoElement.paused) {
+        videoElement.pause();
+    } else if (!isSongPaused()) {
         click_play_pause();
     }
 };
 
 export const resumeSong = (): void => {
-    if (activeVideoElement && activeVideoElement.paused) {
-        activeVideoElement.play().catch(e => log("Error playing media:", e));
-    } else {
+    if (videoElement && videoElement.paused) {
+        videoElement.play().catch(e => log("Error playing media:", e));
+    } else if (isSongPaused()) {
         click_play_pause();
     }
 };
@@ -143,31 +148,49 @@ export const resumeSong = (): void => {
 
 function getSongInfo(): CurrentSong {
     try {
-        const video = activeVideoElement;
+        const video = document.querySelector('video') as HTMLMediaElement | null;
         
-        let duration = 0;
         let currentTime = 0;
+        let duration = 0; // Will override this with DOM data
         let isPaused = true;
 
         if (video) {
-            duration = Number.isFinite(video.duration) ? video.duration : 0;
             currentTime = video.currentTime; 
             isPaused = video.paused;
         }
 
-        // Metadata
+        // 1. Metadata from MediaSession (Fastest)
         const metadata = navigator.mediaSession?.metadata;
         let title = metadata?.title || "";
         let artist = metadata?.artist || "";
         let album = metadata?.album || "";
 
-        // DOM Fallback
+        // 2. Metadata from DOM (Fallback & Duration Source)
         if (!title) {
             title = document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || "";
             const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || "";
             const parts = byline.split('•').map(s => s.trim());
             artist = parts[0] || "";
             album = parts[1] || "";
+        }
+
+        // 3. CRITICAL FIX: Get Duration from DOM text ("2:30 / 3:56")
+        // We trust this visual duration over the video.duration
+        const timeInfo = document.querySelector('.time-info')?.textContent?.trim();
+        if (timeInfo) {
+            const parts = timeInfo.split('/');
+            if (parts.length === 2) {
+                // Parse the second part ("3:56")
+                const domDuration = parseTimeStr(parts[1]);
+                if (domDuration > 0) {
+                    duration = domDuration;
+                }
+            }
+        }
+        
+        // Fallback: If DOM scrape failed, use video duration, but warn
+        if (duration === 0 && video && Number.isFinite(video.duration)) {
+            duration = video.duration;
         }
 
         return { title, artist, album, duration, currentTime, isPaused };
@@ -196,77 +219,54 @@ function fetchUpcomingSong(): Promise<UpcomingSong | null> {
   });
 }
 
-// --- The Heartbeat (Video Discovery) ---
+// --- The Core Engine ---
 
-function ensureActiveVideoListener() {
-    const videos = Array.from(document.querySelectorAll('video'));
-    
-    if (videos.length === 0) return;
-
-    // FIND THE "TRUE" PLAYER:
-    // 1. Must not be paused (highest priority)
-    // 2. Or, has the highest currentTime (if everything is paused)
-    const candidate = videos.reduce((prev, curr) => {
-        if (!prev.paused && curr.paused) return prev;
-        if (prev.paused && !curr.paused) return curr;
-        return (curr.currentTime > prev.currentTime) ? curr : prev;
-    });
-
-    // If we found a new, better candidate, swap!
-    if (candidate !== activeVideoElement) {
-        log("🔄 Swapping active video listener", candidate);
-        
-        // Cleanup old listener
-        if (activeVideoElement) {
-            activeVideoElement.removeEventListener('timeupdate', handleTimeUpdate);
-            // Remove visual debug border if exists
-            activeVideoElement.style.border = '';
-        }
-
-        activeVideoElement = candidate;
-        
-        // Attach new listener
-        activeVideoElement.addEventListener('timeupdate', handleTimeUpdate);
-        
-        // VISUAL DEBUG: Add a subtle red border to the tracked video in Debug mode
-        if (isDebug) {
-            activeVideoElement.style.border = '2px solid red';
-        }
+function setupVideoListener() {
+    const video = document.querySelector('video');
+    if (!video) {
+        setTimeout(setupVideoListener, 500); 
+        return;
     }
+    
+    if (videoElement === video) return;
+    
+    videoElement = video;
+    log("✅ Attached AI DJ listener to video element.");
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    
+    video.addEventListener('emptied', () => {
+        log("Video emptied. Re-checking...");
+        setTimeout(setupVideoListener, 1000);
+    });
 }
 
-// --- The Core Logic (Fires on Time Update) ---
-
 function handleTimeUpdate() {
-    if (!isEnabled || !activeVideoElement || activeVideoElement.paused) return;
+    if (!isEnabled || !videoElement || videoElement.paused) return;
 
-    const duration = activeVideoElement.duration;
-    const currentTime = activeVideoElement.currentTime;
-
-    if (!Number.isFinite(duration)) return;
-
-    const timeRemaining = duration - currentTime;
+    // Use getSongInfo() to get the DOM-based duration
     const currentInfo = getSongInfo();
     
-    if (!currentInfo.title) return;
+    if (!currentInfo.title || currentInfo.duration === 0) return;
 
-    // Keying
+    // Calc time remaining using: (DOM Total Time) - (Video Current Time)
+    const timeRemaining = currentInfo.duration - currentInfo.currentTime;
+
     const nextTitle = upcomingSong?.title || "PENDING";
     const songKey = `${currentInfo.title}::${nextTitle}`;
 
-    // Throttle logs
     if (isDebug) {
-        interval_logger.log(`Active Video: ${timeRemaining.toFixed(2)}s left. Key: ${songKey}`);
+        interval_logger.log(`Time Left: ${timeRemaining.toFixed(3)}s | Key: ${songKey} | Dur: ${currentInfo.duration}`);
     }
 
-    // Cleanup
     if (prewarmedSongs.size > MAX_SET_SIZE) prewarmedSongs.clear();
     if (alertedSongs.size > MAX_SET_SIZE) alertedSongs.clear();
 
-    // 1. PRE-WARM (at > 20%)
-    if (duration > 0 && (currentTime / duration) > 0.2) {
+    // --- PRE-WARM ---
+    const progress = currentInfo.currentTime / currentInfo.duration;
+    if (progress > 0.2) {
         if (upcomingSong && !prewarmedSongs.has(songKey)) {
-            log(`Pre-warming RJ model for ${songKey}`);
+            log(`Pre-warming for ${songKey}`);
             prewarmedSongs.add(songKey);
             
             chrome.runtime.sendMessage({
@@ -282,19 +282,18 @@ function handleTimeUpdate() {
         }
     }
 
-    // 2. THE TRIGGER (Pause at < 2.2s left)
+    // --- TRIGGER ---
     if (!alertedSongs.has(songKey)) {
-        // Trigger Window: 2.2s to 0.2s
-        // Min Duration: 10s (avoids short ads/glitches)
-        if (timeRemaining <= 2.2 && timeRemaining > 0.2 && duration > 10) {
+        // Window: 2.2s to -5.0s (Negative allowed because video might run longer than DOM time)
+        // Check upper bound (2.2s) and sane lower bound (e.g. -10s)
+        if (timeRemaining <= 2.2 && timeRemaining > -10 && currentInfo.duration > 10) {
             
-            log(`🔥 PAUSE TRIGGER HIT! Time left: ${timeRemaining.toFixed(3)}s`);
+            log(`🔥 TIME HIT: ${timeRemaining.toFixed(3)}s remaining. PAUSING.`);
             
             pauseSong();
             alertedSongs.add(songKey);
 
             (async () => {
-                // If we paused but don't have the next song yet, grab it now
                 if (!upcomingSong) {
                     log("Panic fetching next song...");
                     upcomingSong = await fetchUpcomingSong();
@@ -321,10 +320,8 @@ function handleTimeUpdate() {
 
 function startBackgroundPolling() {
     log("Starting Background Polling...");
-    // Fetch immediately
     fetchUpcomingSong().then(data => { if(data) upcomingSong = data; });
 
-    // Poll for metadata updates every 2s
     setInterval(() => {
         if (!isSongPaused()) {
             fetchUpcomingSong().then(data => {
