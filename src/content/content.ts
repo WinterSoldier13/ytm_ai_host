@@ -234,41 +234,113 @@ export const click_play_pause = (): void => {
 
 // --- Core Functions ---
 
-export function getSongInfo(): CurrentSong {
-    try {
-        const title = getTextFromXPath(currentSongNameXPath);
-        const artist = getTextFromXPath(artistNameXPath);
-        const album = getTextFromXPath(currentSongAlbumNameXPath);
-        const timer = getTextFromXPath(currentSongTimerXPath); // it will be a string like "0:00 / 3:59"
+// export function getSongInfo(): CurrentSong {
+//     try {
+//         const title = getTextFromXPath(currentSongNameXPath);
+//         const artist = getTextFromXPath(artistNameXPath);
+//         const album = getTextFromXPath(currentSongAlbumNameXPath);
+//         const timer = getTextFromXPath(currentSongTimerXPath); // it will be a string like "0:00 / 3:59"
 
-        if (!timer) {
-            // log(new Error('getSongInfo: Timer element not found')); // Too noisy
-            return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
+//         if (!timer) {
+//             // log(new Error('getSongInfo: Timer element not found')); // Too noisy
+//             return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
+//         }
+
+//         //convert the timer string to seconds
+//         const [currentTime, duration] = (() => {
+//             const [currentTimeStr, durationStr] = timer.split('/');
+//             const [currMinutes, currSeconds] = currentTimeStr.split(':').map(Number);
+//             const [durMinutes, durSeconds] = durationStr.split(':').map(Number);
+//             return [currMinutes * 60 + currSeconds, durMinutes * 60 + durSeconds];
+//         })();
+
+//         const currSong: CurrentSong = {
+//             title,
+//             artist,
+//             album,
+//             duration,
+//             currentTime,
+//             isPaused: isSongPaused()
+//         }
+
+//         return currSong;
+
+//     } catch (e) {
+//         log(new Error('getSongInfo: Unexpected error'), e);
+//         return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
+//     }
+// }
+
+function getSongInfo(): CurrentSong {
+    try {
+        const video = document.querySelector('video');
+        
+        // Default values if video isn't loaded yet
+        let duration = 0;
+        let currentTime = 0;
+        let isPaused = false;
+
+        if (video) {
+            duration = Number.isNaN(video.duration) ? 0 : video.duration;
+            currentTime = video.currentTime; 
+            isPaused = video.paused;
         }
 
-        //convert the timer string to seconds
-        const [currentTime, duration] = (() => {
-            const [currentTimeStr, durationStr] = timer.split('/');
-            const [currMinutes, currSeconds] = currentTimeStr.split(':').map(Number);
-            const [durMinutes, durSeconds] = durationStr.split(':').map(Number);
-            return [currMinutes * 60 + currSeconds, durMinutes * 60 + durSeconds];
-        })();
+        const metadata = navigator.mediaSession?.metadata;
+        
+        let title = "";
+        let artist = "";
+        let album = "";
 
-        const currSong: CurrentSong = {
+        if (metadata) {
+            title = metadata.title;
+            artist = metadata.artist;
+            album = metadata.album;
+        } 
+        
+        if (!title) {
+            title = document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || "";
+            const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || "";
+            const parts = byline.split('•').map(s => s.trim());
+            artist = parts[0] || "";
+            album = parts[1] || "";
+        }
+
+        return {
             title,
             artist,
             album,
-            duration,
+            duration, // Returns seconds (e.g. 239.5)
             currentTime,
-            isPaused: isSongPaused()
-        }
-
-        return currSong;
+            isPaused
+        };
 
     } catch (e) {
-        log(new Error('getSongInfo: Unexpected error'), e);
+        console.error('getSongInfo: Unexpected error', e);
         return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
     }
+}
+
+function fetchUpcomingSong(): Promise<{ upcomingSong: UpcomingSong} | null> {
+  return new Promise((resolve) => {
+    // 1. Set up a one-time listener for the response
+    const handleResponse = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      window.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+      resolve(customEvent.detail);
+    };
+
+    window.addEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+
+    // 2. Dispatch the request
+    window.dispatchEvent(new CustomEvent('YTM_EXTENSION_REQUEST_DATA'));
+    
+    // Optional: Timeout if injector doesn't respond in 1 second.
+    setTimeout(() => {
+      window.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+      resolve(null);
+    }, 1000);
+  });
 }
 
 /**
@@ -366,10 +438,16 @@ function get_status() {
     if (!isEnabled) return;
 
     currentSong = getSongInfo();
-    upcomingSong = getNextSongInQueue();
+    // upcomingSong = getNextSongInQueue();
+    fetchUpcomingSong().then(data => {
+        if (data) {
+            upcomingSong = data.upcomingSong;
+        } else {
+            log("Failed to fetch upcoming song from injector during status check.");
+        }
+    });
 
-    log('Current Song:', currentSong);
-    log('Upcoming Song:', upcomingSong);
+    log(`--- Status Check --- ${currentSong.title}::${upcomingSong?.title} ---`);
 
     if (currentSong.title === '') {
         return;
@@ -444,7 +522,15 @@ function startPolling() {
 
     // Initial check
     currentSong = getSongInfo();
-    upcomingSong = getNextSongInQueue();
+    // upcomingSong = getNextSongInQueue();
+    fetchUpcomingSong().then(data => {
+        if (data) {
+            upcomingSong = data.upcomingSong;
+            log(`Setting Initial Upcoming Song: ${upcomingSong?.title}`);
+        } else {
+            log("Failed to fetch initial upcoming song from injector.");
+        }
+    });
     log(`Setting Initial Song: ${currentSong.title}`);
 
     // Poll every 1 second

@@ -52,8 +52,8 @@ export type MessageSchema = {
         textToSpeak: string;
         speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro';
         geminiApiKey?: string;
-        forSongNow? : string;
-        forSongNext? : string;
+        forSongNow?: string;
+        forSongNext?: string;
     };
 } | {
     type: 'SPEAK_WITH_LOCAL_SERVER'; // Cleaner command
@@ -73,9 +73,9 @@ export type MessageSchema = {
     type: 'GET_CURRENT_SONG_INFO';
 } | {
     type: 'CURRENT_SONG_INFO';
-    payload:{
-        currentSongTitle? : string
-        upcomingSongTitle? : string
+    payload: {
+        currentSongTitle?: string
+        upcomingSongTitle?: string
     }
 } | {
     type: 'OFFSCREEN_TO_CONTENT_PROXY';
@@ -83,6 +83,11 @@ export type MessageSchema = {
         tabId: number;
         message: MessageSchema;
     }
+} | {
+    type: 'YTM_EXTENSION_REQUEST_DATA'
+} | {
+    type: 'YTM_EXTENSION_RESPONSE_DATA';
+    upcomingSong?: UpcomingSong
 };
 
 export interface CurrentSong {

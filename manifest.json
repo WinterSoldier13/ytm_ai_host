@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "AI DJ Cara - YouTube Music Helper",
+    "name": "AI DJ Cara - YTM Host",
     "version": "1.0",
-    "description": "Alerts when a song is about to end on YouTube Music.",
+    "description": "An AI host for your YouTube Music experience, powered by Generative AI.",
     "permissions": [
         "activeTab",
         "offscreen",
@@ -34,6 +34,15 @@
             "js": [
                 "content.js"
             ]
+        },
+        {
+            "matches": [
+                "https://music.youtube.com/*"
+            ],
+            "js": [
+                "injector.js"
+            ],
+            "world": "MAIN"
         }
     ],
     "icons": {
