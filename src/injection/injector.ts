@@ -1,24 +1,13 @@
-import { UpcomingSong } from "../utils/types"; 
+import { UpcomingSong } from "../utils/types";
 
-function getPlayerDuration(): number {
-  const player = document.getElementById('movie_player') as any;
-  if (player && typeof player.getDuration === 'function') {
-    return player.getDuration(); // Returns seconds (e.g. 236.5)
-  }
-  return 0;
-}
-
+// --- HELPER: Queue Logic (Keep your existing one) ---
 function getNextSongData(): UpcomingSong | null {
   const queueEl = document.querySelector('ytmusic-player-queue') as any;
-  
   const store = queueEl?.queue?.store || queueEl?.store;
   const state = store?.getState ? store.getState() : null;
   const queueState = state?.queue || state?.player?.queue;
 
-  if (!queueState) {
-    console.warn("YTM Injector: Queue state not found.");
-    return null;
-  }
+  if (!queueState) return null;
 
   const mainItems = queueState.items || [];
   const automixItems = queueState.automixItems || [];
@@ -41,28 +30,57 @@ function getNextSongData(): UpcomingSong | null {
 
   if (currentIndex !== -1 && currentIndex < fullQueue.length - 1) {
     const nextData = unwrap(fullQueue[currentIndex + 1]);
-    
     if (nextData) {
-      const byLineRuns = nextData.longBylineText?.runs || [];
       return {
         title: nextData.title?.runs?.[0]?.text || "Unknown Title",
-        artist: byLineRuns[0]?.text || "Unknown Artist"
+        artist: nextData.longBylineText?.runs?.[0]?.text || "Unknown Artist"
       };
     }
   }
   return null;
 }
 
-// --- LISTENER ---
-// Listen for the specific request from the Content Script
-document.addEventListener('YTM_EXTENSION_REQUEST_DATA', () => {
-  const data = {
-    upcoming: getNextSongData(),
-    duration: getPlayerDuration()
-  };
+// --- HELPER: Player Status ---
+function getPlayerStatus() {
+  const player = document.getElementById('movie_player') as any;
   
-  // Dispatch the response back
-  document.dispatchEvent(new CustomEvent('YTM_EXTENSION_RETURN_DATA', {
-    detail: data
-  }));
+  if (!player || typeof player.getCurrentTime !== 'function') {
+    return null;
+  }
+
+  // The API handles offsets/music-video-padding for us
+  const duration = player.getDuration();
+  const currentTime = player.getCurrentTime();
+  const timeLeft = duration - currentTime;
+  
+  // Player State: 1 = Playing, 2 = Paused, 3 = Buffering
+  const state = player.getPlayerState();
+  const isPaused = state === 2 || state === 0 || state === -1; // 0 is ended, -1 unstarted
+
+  // Get current song details directly from API (More reliable than DOM)
+  const videoData = player.getVideoData ? player.getVideoData() : null;
+
+  return {
+    timeLeft: timeLeft,
+    currentTime: currentTime,
+    duration: duration,
+    isPaused: isPaused,
+    currentTitle: videoData?.title || "Unknown",
+    currentArtist: videoData?.author || "Unknown"
+  };
+}
+
+// --- LISTENER ---
+window.addEventListener('YTM_EXTENSION_REQUEST_STATUS', () => {
+  const status = getPlayerStatus();
+  const upcoming = getNextSongData();
+
+  if (status) {
+    window.dispatchEvent(new CustomEvent('YTM_EXTENSION_RETURN_STATUS', {
+      detail: {
+        ...status,
+        upcoming // Attach upcoming song to the same packet
+      }
+    }));
+  }
 });
