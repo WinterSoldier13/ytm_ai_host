@@ -39,9 +39,7 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-// When the user clicks "next", it should shut the fuck up.
-// When the user clicks "next", it should shut the fuck up.
-async function shouldShutTheFuckUp(
+async function shouldAbortPlayback(
   tabId: number,
   songNow?: string,
   songNext?: string,
@@ -327,12 +325,11 @@ async function playAudio(
       currentAudio = null;
     }
 
-    // should I shut the fuck up instead?
     if (
-      await shouldShutTheFuckUp(tabId, payload.forSongNow, payload.forSongNext)
+      await shouldAbortPlayback(tabId, payload.forSongNow, payload.forSongNext)
     ) {
       console.log(
-        "[Offscreen] Validation failed: Song changed. Shutup mode activated.",
+        "[Offscreen] Validation failed: Song changed. Aborting playback.",
       );
       return;
     }

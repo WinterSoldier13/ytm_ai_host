@@ -1,7 +1,6 @@
 import { MessageSchema } from "../utils/types";
 
 // Currently Gemini for Chrome is not available in all regions :(
-// const introCache = new Map<string, Promise<string>>(); // REMOVED: In-memory cache
 const alreadyAnnounced = new Set<string>();
 
 function getCacheKey(oldTitle: string, newTitle: string): string {

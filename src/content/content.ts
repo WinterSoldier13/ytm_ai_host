@@ -87,8 +87,7 @@ function init() {
   document.addEventListener(EVENT_RETURN_DATA, handshakeSuccess);
 
   chrome.storage.sync.get(["isDebugEnabled", "isEnabled"], (result) => {
-    // Force Debug = TRUE for now to verify logic
-    isDebug = true; // result.isDebugEnabled ?? false;
+    isDebug = result.isDebugEnabled ?? false;
     isEnabled = result.isEnabled ?? true;
 
     updateAIRJModeIndicator();
@@ -167,7 +166,7 @@ async function handleSongChange(detail: any) {
   currentSong = detail.currentSong;
   upcomingSong = detail.upcomingSong;
 
-  log(`🎵 Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
+  log(`Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
 
   // 2. Announce the TRANSITION to this song (if available)
   // We are looking for a transition from prevSong -> currentSong
@@ -228,7 +227,7 @@ async function triggerAnnounce(pairKey: string) {
         // If playback already resumed (by Safety Timer or User), DO NOT announce.
         // Or if context changed completely.
         if (isPlaybackResumed) {
-          log("🚫 Abort Announce: Playback was already resumed.");
+          log("Abort Announce: Playback was already resumed.");
           resolve();
           return;
         }
@@ -237,7 +236,7 @@ async function triggerAnnounce(pairKey: string) {
         // If the song playing now is NOT what we expected to announce...
         if (currentSong?.title !== expectedCurrentTitle) {
           log(
-            `🚫 Abort Announce: Song changed mismatch! (Exp: ${expectedCurrentTitle}, Act: ${currentSong?.title})`,
+            `Abort Announce: Song changed mismatch! (Exp: ${expectedCurrentTitle}, Act: ${currentSong?.title})`,
           );
           // Ensure we resume just in case
           document.dispatchEvent(new CustomEvent(EVENT_RESUME));
@@ -287,14 +286,14 @@ async function triggerAnnounce(pairKey: string) {
     // Default 4s. If TTS starts, we extend it indefinitely (or rely on Injector's long timer).
     let safetyTimer = setTimeout(() => {
       if (!isPlaybackResumed) {
-        log("⏱️ Announce Timeout (4s). Resuming manually.");
+        log("Announce Timeout (4s). Resuming manually.");
         document.dispatchEvent(new CustomEvent(EVENT_RESUME));
         resolve();
       }
     }, 4000);
 
     const ttsStartedHandler = () => {
-      log("🎤 TTS Started! Clearing 4s safety timer.");
+      log("TTS Started! Clearing 4s safety timer.");
       clearTimeout(safetyTimer);
       document.removeEventListener(EVENT_TTS_STARTED, ttsStartedHandler);
     };
@@ -362,7 +361,7 @@ function performPrefetch(
     return;
   }
 
-  log(`🚀 Sending PREWARM_RJ for ${pairKey}`);
+  log(`Sending PREWARM_RJ for ${pairKey}`);
   processedPairs.add(pairKey);
 
   chrome.runtime.sendMessage({
