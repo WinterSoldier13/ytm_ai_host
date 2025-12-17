@@ -11,7 +11,7 @@ Remember DJ Cara from NonStopPop FM in GTA V? Ja, I wanted something similar for
 ## Screenshot
 ![Heading](images/ai_rj_mode.png)
 
-![Screenshot](images/image1.png)
+![Screenshot](images/image2.png)
 
 ## Features
 
