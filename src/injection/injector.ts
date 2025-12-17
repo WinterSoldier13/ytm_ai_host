@@ -22,33 +22,12 @@ import {
   let safetyTimer: any = null;
   let currentTitle = "";
   let latestUpcomingTitle = ""; // To detect queue updates
-  let lastProgress = 0; // 0.0 to 1.0
 
   const mediaSession = navigator.mediaSession;
   const originalPlay = HTMLMediaElement.prototype.play;
 
   const log = (msg: string, ...args: any[]) =>
     console.log(`%c[Injector] ${msg}`, "color: #bada55", ...args);
-
-  // Monitor Video Progress
-  function attachVideoMonitor() {
-    const video = document.querySelector("video");
-    if (video && !video.dataset.monitorAttached) {
-      video.dataset.monitorAttached = "true";
-      video.addEventListener("timeupdate", () => {
-        if (video.duration > 0) {
-          lastProgress = video.currentTime / video.duration;
-        }
-      });
-      video.addEventListener("ended", () => {
-        lastProgress = 1.0;
-      });
-      // Also seeked? If user builds up progress then seeks back?
-      // We care about "Where were we when it changed?"
-    }
-  }
-  // Try attaching periodically in case video element recreation (rare in SPA but possible)
-  setInterval(attachVideoMonitor, 2000);
 
   // --- 1. HELPER: Internal Data Access ---
   function getNextSongData(): UpcomingSong | null {
@@ -180,19 +159,11 @@ import {
       _metadata = newValue;
 
       if (newValue && newValue.title !== currentTitle) {
-        // Detect Manual Skip vs Natural End
-        // If lastProgress > 0.8, it's likely a natural end or near-end skip.
-        // If lastProgress < 0.8, it is definitely a manual interruption.
-        const isManualSkip = lastProgress < 0.8;
-
-        // Reset Progress for new song
-        lastProgress = 0;
-
+        // Always Lock & Pause immediately on song change
         log(
-          `Song Change Detected from "${currentTitle}" to "${newValue.title}" (Manual: ${isManualSkip})`,
+          `Song Change Detected from "${currentTitle}" to "${newValue.title}"`,
         );
 
-        // 1. Lock & Pause immediately
         isLocked = true;
         const video = document.querySelector(
           "video, audio",
@@ -221,10 +192,8 @@ import {
           }
         }, 6000);
 
-        // 2. Broadcast the event with data
-        broadcast(EVENT_TRIGGER, isManualSkip ? "MANUAL_SKIP" : "NATURAL_END", {
-          isManualSkip,
-        });
+        // Broadcast the event
+        broadcast(EVENT_TRIGGER, "SONG_CHANGED");
       }
     },
     configurable: true,

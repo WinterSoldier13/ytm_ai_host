@@ -168,16 +168,6 @@ async function handleSongChange(detail: any) {
 
   log(`🎵 Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
 
-  // 1. Check for MANUAL SKIP
-  if (detail.isManualSkip) {
-    log("Manual skip detected. Resuming immediately without announcement.");
-    document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-
-    // Even if manual, we should schedule prefetch for the NEW song pair
-    schedulePrefetch();
-    return;
-  }
-
   // 2. Announce the TRANSITION to this song (if available)
   // We are looking for a transition from prevSong -> currentSong
   // But since we store prewarmed keys as "Current::Next", we look for "Prev::Current"
@@ -413,17 +403,28 @@ document.addEventListener(EVENT_RETURN_DATA, (e: any) => {
 });
 
 // 2. From Background (TTS Ended, etc.)
-chrome.runtime.onMessage.addListener((message: MessageSchema) => {
-  if (message.type === "TTS_ENDED") {
-    // Handled in triggerAnnounce usually, but as a fallback:
-    log("TTS_ENDED received globally.");
-    // We assume triggerAnnounce listener caught it.
-    // If we are paused and stuck, we can resume here too.
-    if (document.querySelector("video")?.paused) {
-      document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+// 2. From Background (TTS Ended, etc.)
+chrome.runtime.onMessage.addListener(
+  (message: MessageSchema, sender, sendResponse) => {
+    if (message.type === "TTS_ENDED") {
+      // Handled in triggerAnnounce usually, but as a fallback:
+      log("TTS_ENDED received globally.");
+      // We assume triggerAnnounce listener caught it.
+      // If we are paused and stuck, we can resume here too.
+      if (document.querySelector("video")?.paused) {
+        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+      }
+    } else if (message.type === "GET_CURRENT_SONG_INFO") {
+      sendResponse({
+        type: "CURRENT_SONG_INFO",
+        payload: {
+          currentSongTitle: currentSong?.title,
+          upcomingSongTitle: upcomingSong?.title,
+        },
+      });
     }
-  }
-});
+  },
+);
 
 // Start
 if (document.readyState === "loading") {
