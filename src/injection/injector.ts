@@ -1,86 +1,99 @@
-import { CurrentSong, UpcomingSong } from "../utils/types";
+import {
+  CurrentSong,
+  UpcomingSong,
+  EVENT_TRIGGER,
+  EVENT_UPDATE,
+  EVENT_RESUME,
+  EVENT_REQUEST_DATA,
+  EVENT_RETURN_DATA,
+} from "../utils/types";
 
 (() => {
-  // --- CONFIG ---
-  const EVENT_TRIGGER = 'YTM_EXT_TRIGGER'; // Song Changed
-  const EVENT_UPDATE = 'YTM_EXT_UPDATE';   // Info Updated (e.g. Queue loaded)
-  const EVENT_RESUME = 'YTM_EXT_RESUME';
-  const EVENT_REQUEST_DATA = 'YTM_EXTENSION_REQUEST_DATA';
-  const EVENT_RETURN_DATA = 'YTM_EXTENSION_RETURN_DATA';
+  // --- CONFIG --- (Imported from types)
+
+  // Immediate startup log
+  console.log(
+    "%c[Injector] Script Loaded & Running",
+    "color: #bada55; font-size: 12px; font-weight: bold;",
+  );
 
   // --- STATE ---
   let isLocked = false;
-  let currentTitle = '';
-  let lastUpcomingTitle = ''; // To detect queue updates
+  let safetyTimer: any = null;
+  let currentTitle = "";
+  let latestUpcomingTitle = ""; // To detect queue updates
+  let lastProgress = 0; // 0.0 to 1.0
 
   const mediaSession = navigator.mediaSession;
   const originalPlay = HTMLMediaElement.prototype.play;
 
-  const log = (msg: string, ...args: any[]) => console.log(`%c[Injector] ${msg}`, 'color: #bada55', ...args);
+  const log = (msg: string, ...args: any[]) =>
+    console.log(`%c[Injector] ${msg}`, "color: #bada55", ...args);
+
+  // Monitor Video Progress
+  function attachVideoMonitor() {
+    const video = document.querySelector("video");
+    if (video && !video.dataset.monitorAttached) {
+      video.dataset.monitorAttached = "true";
+      video.addEventListener("timeupdate", () => {
+        if (video.duration > 0) {
+          lastProgress = video.currentTime / video.duration;
+        }
+      });
+      video.addEventListener("ended", () => {
+        lastProgress = 1.0;
+      });
+      // Also seeked? If user builds up progress then seeks back?
+      // We care about "Where were we when it changed?"
+    }
+  }
+  // Try attaching periodically in case video element recreation (rare in SPA but possible)
+  setInterval(attachVideoMonitor, 2000);
 
   // --- 1. HELPER: Internal Data Access ---
-
   function getNextSongData(): UpcomingSong | null {
-    try {
-      const queueEl = document.querySelector('ytmusic-player-queue') as any;
-      // Access Redux store if available
-      const store = queueEl?.queue?.store || queueEl?.store;
+    const queueEl = document.querySelector("ytmusic-player-queue") as any;
+    const store = queueEl?.queue?.store || queueEl?.store;
+    const state = store?.getState ? store.getState() : null;
+    const queueState = state?.queue || state?.player?.queue;
 
-      // If store isn't available, we might be too early or it's hidden.
-      // We can try to look at the DOM structure directly if store fails,
-      // but store is most reliable for "Upcoming".
+    if (!queueState) return null;
 
-      if (!store) {
-          // Fallback: Try to parse the DOM list if rendered
-          // This is brittle but useful if Redux isn't exposed yet
-          return null;
+    const mainItems = queueState.items || [];
+    const automixItems = queueState.automixItems || [];
+    const fullQueue = [...mainItems, ...automixItems];
+
+    if (fullQueue.length === 0) return null;
+
+    const unwrap = (item: any) =>
+      item.playlistPanelVideoRenderer ||
+      item.playlistPanelVideoWrapperRenderer?.primaryRenderer
+        ?.playlistPanelVideoRenderer;
+
+    let currentIndex = -1;
+    for (let i = 0; i < fullQueue.length; i++) {
+      const data = unwrap(fullQueue[i]);
+      if (data && data.selected) {
+        currentIndex = i;
+        break;
       }
-
-      const state = store.getState();
-      const queueState = state?.queue || state?.player?.queue;
-
-      if (!queueState) return null;
-
-      const mainItems = queueState.items || [];
-      const automixItems = queueState.automixItems || [];
-      const fullQueue = [...mainItems, ...automixItems];
-
-      if (fullQueue.length === 0) return null;
-
-      const unwrap = (item: any) =>
-        item.playlistPanelVideoRenderer ||
-        item.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
-
-      // Find current index
-      let currentIndex = -1;
-      for (let i = 0; i < fullQueue.length; i++) {
-        const data = unwrap(fullQueue[i]);
-        if (data && data.selected) {
-          currentIndex = i;
-          break;
-        }
-      }
-
-      // Get next item
-      if (currentIndex !== -1 && currentIndex < fullQueue.length - 1) {
-        const nextData = unwrap(fullQueue[currentIndex + 1]);
-        if (nextData) {
-          return {
-            title: nextData.title?.runs?.[0]?.text || "Unknown Title",
-            artist: nextData.longBylineText?.runs?.[0]?.text || "Unknown Artist"
-          };
-        }
-      }
-      return null;
-    } catch (e) {
-      // log("Error in getNextSongData", e);
-      return null;
     }
+
+    if (currentIndex !== -1 && currentIndex < fullQueue.length - 1) {
+      const nextData = unwrap(fullQueue[currentIndex + 1]);
+      if (nextData) {
+        return {
+          title: nextData.title?.runs?.[0]?.text || "Unknown Title",
+          artist: nextData.longBylineText?.runs?.[0]?.text || "Unknown Artist",
+        };
+      }
+    }
+    return null;
   }
 
   function getPlayerStatus(): CurrentSong | null {
     try {
-      const player = document.getElementById('movie_player') as any;
+      const player = document.getElementById("movie_player") as any;
       const videoData = player?.getVideoData ? player.getVideoData() : null;
       const metadata = navigator.mediaSession?.metadata;
 
@@ -91,18 +104,22 @@ import { CurrentSong, UpcomingSong } from "../utils/types";
 
       // Fallback for album from DOM if missing (MediaSession often has it though)
       if (!album) {
-         const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || "";
-         const parts = byline.split('•').map(s => s.trim());
-         if (parts.length > 1) album = parts[1];
+        const byline =
+          document.querySelector("ytmusic-player-bar .byline")?.textContent ||
+          "";
+        const parts = byline.split("•").map((s) => s.trim());
+        if (parts.length > 1) album = parts[1];
       }
 
-      const isPaused = player?.getPlayerState ? (player.getPlayerState() === 2) : true;
+      const isPaused = player?.getPlayerState
+        ? player.getPlayerState() === 2
+        : true;
 
       return {
         title,
         artist,
         album,
-        isPaused
+        isPaused,
       };
     } catch (e) {
       console.error(e);
@@ -112,76 +129,128 @@ import { CurrentSong, UpcomingSong } from "../utils/types";
 
   // --- 2. BROADCASTER ---
 
-  function broadcast(eventType: string, reason?: string) {
+  function broadcast(eventType: string, reason?: string, extras?: any) {
     const currentSong = getPlayerStatus();
     const upcomingSong = getNextSongData();
 
     if (currentSong) {
-        // log(`Broadcasting ${eventType} (${reason})`, { current: currentSong.title, next: upcomingSong?.title });
+      log(`Broadcasting ${eventType} (${reason})`, {
+        current: currentSong.title,
+        next: upcomingSong?.title,
+        ...extras,
+      });
 
-        document.dispatchEvent(new CustomEvent(eventType, {
-            detail: {
-                currentSong,
-                upcomingSong,
-                reason,
-                timestamp: Date.now()
-            }
-        }));
+      document.dispatchEvent(
+        new CustomEvent(eventType, {
+          detail: {
+            currentSong,
+            upcomingSong,
+            reason,
+            timestamp: Date.now(),
+            ...extras,
+          },
+        }),
+      );
 
-        // Update local state to detect changes later
-        currentTitle = currentSong.title;
-        lastUpcomingTitle = upcomingSong?.title || '';
+      // Update local state to detect changes later
+      currentTitle = currentSong.title;
+      latestUpcomingTitle = upcomingSong?.title || "";
+    } else {
+      log(`Skipping broadcast ${eventType}: No active player found.`);
     }
   }
 
   // --- 3. THE PLAY LOCK & TRAP ---
 
   // Override play to enforce pause during transition
-  HTMLMediaElement.prototype.play = function(): Promise<void> {
+  HTMLMediaElement.prototype.play = function (): Promise<void> {
     if (isLocked) {
-      // log('🚫 Play blocked pending API check');
+      log("Play blocked pending API check");
       return Promise.resolve();
     }
     return originalPlay.apply(this);
   };
 
   let _metadata = mediaSession.metadata;
-  Object.defineProperty(mediaSession, 'metadata', {
-    get() { return _metadata; },
+  Object.defineProperty(mediaSession, "metadata", {
+    get() {
+      return _metadata;
+    },
     set(newValue) {
       _metadata = newValue;
 
       if (newValue && newValue.title !== currentTitle) {
-        log(`🔒 Song Change Detected: "${newValue.title}"`);
-        
+        // Detect Manual Skip vs Natural End
+        // If lastProgress > 0.8, it's likely a natural end or near-end skip.
+        // If lastProgress < 0.8, it is definitely a manual interruption.
+        const isManualSkip = lastProgress < 0.8;
+
+        // Reset Progress for new song
+        lastProgress = 0;
+
+        log(
+          `Song Change Detected from "${currentTitle}" to "${newValue.title}" (Manual: ${isManualSkip})`,
+        );
+
         // 1. Lock & Pause immediately
         isLocked = true;
-        const video = document.querySelector('video');
+        const video = document.querySelector(
+          "video, audio",
+        ) as HTMLMediaElement;
         if (video) video.pause();
 
+        // Safety Unlock Timer (in case Content Script is dead or misses event)
+        if (safetyTimer) clearTimeout(safetyTimer);
+        const timerStart = Date.now();
+        safetyTimer = setTimeout(() => {
+          const elapsed = Date.now() - timerStart;
+          if (elapsed > 8000) {
+            log(
+              `Safety Timer delayed significantly by browser throttling (${elapsed}ms). Tab might be backgrounded.`,
+            );
+          }
+
+          if (isLocked) {
+            log("Safety Unlock Triggered - Resume signal missed?");
+            isLocked = false;
+            broadcast(EVENT_RESUME, "SAFETY_TIMER"); // Notify content to cancel announcements
+            const v = document.querySelector(
+              "video, audio",
+            ) as HTMLMediaElement;
+            if (v) originalPlay.call(v);
+          }
+        }, 6000);
+
         // 2. Broadcast the event with data
-        // We might need a slight delay to ensure internal state (queue) updates?
-        // Usually metadata updates first. We will send what we have.
-        // If queue is stale, the poller will catch it.
-        broadcast(EVENT_TRIGGER, 'SONG_CHANGED');
+        broadcast(EVENT_TRIGGER, isManualSkip ? "MANUAL_SKIP" : "NATURAL_END", {
+          isManualSkip,
+        });
       }
     },
-    configurable: true
+    configurable: true,
   });
 
   // --- 4. LISTENERS ---
 
   // Listen for resume command from Content Script
   document.addEventListener(EVENT_RESUME, () => {
-    log('🔓 Resume Event Received');
+    log("Resume Event Received");
+    if (safetyTimer) clearTimeout(safetyTimer);
     isLocked = false;
-    const video = document.querySelector('video');
+    const video = document.querySelector("video, audio") as HTMLMediaElement;
     if (video) originalPlay.call(video);
   });
 
   // Listen for data requests (e.g. on startup)
   document.addEventListener(EVENT_REQUEST_DATA, () => {
-      broadcast(EVENT_RETURN_DATA, 'REQUESTED');
+    broadcast(EVENT_RETURN_DATA, "REQUESTED");
+
+    // If we are locked when content connects, it means they missed the TRIGGER.
+    // Resend it so they can handle it (or resume us).
+    if (isLocked) {
+      log("Content connected while Locked. Re-sending TRIGGER.");
+      broadcast(EVENT_TRIGGER, "RECONNECT_RETRY");
+    }
   });
 
   // --- 5. POLLING FOR QUEUE UPDATES ---
@@ -189,14 +258,13 @@ import { CurrentSong, UpcomingSong } from "../utils/types";
   // We check periodically if the "Upcoming" song has changed.
 
   setInterval(() => {
-      const next = getNextSongData();
-      const nextTitle = next?.title || '';
+    const next = getNextSongData();
+    const nextTitle = next?.title || "";
 
-      // If upcoming song changed (and we are not currently locked/changing), notify content
-      if (nextTitle !== lastUpcomingTitle) {
-          // log(`Queue update detected: ${lastUpcomingTitle} -> ${nextTitle}`);
-          broadcast(EVENT_UPDATE, 'QUEUE_UPDATED');
-      }
+    // If upcoming song changed (and we are not currently locked/changing), notify content
+    if (nextTitle !== latestUpcomingTitle) {
+      log(`Queue update detected: ${latestUpcomingTitle} -> ${nextTitle}`);
+      broadcast(EVENT_UPDATE, "QUEUE_UPDATED");
+    }
   }, 2000);
-
 })();

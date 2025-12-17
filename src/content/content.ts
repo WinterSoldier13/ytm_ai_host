@@ -1,11 +1,15 @@
-import { MessageSchema, CurrentSong, UpcomingSong } from '../utils/types';
+import {
+  MessageSchema,
+  CurrentSong,
+  UpcomingSong,
+  EVENT_TRIGGER,
+  EVENT_UPDATE,
+  EVENT_RESUME,
+  EVENT_REQUEST_DATA,
+  EVENT_RETURN_DATA,
+} from "../utils/types";
 
-// --- CONSTANTS ---
-const EVENT_TRIGGER = 'YTM_EXT_TRIGGER'; // Song Changed (Paused)
-const EVENT_UPDATE = 'YTM_EXT_UPDATE';   // Info Updated (e.g. Queue loaded)
-const EVENT_RESUME = 'YTM_EXT_RESUME';
-const EVENT_REQUEST_DATA = 'YTM_EXTENSION_REQUEST_DATA';
-const EVENT_RETURN_DATA = 'YTM_EXTENSION_RETURN_DATA';
+// --- CONSTANTS --- (Imported from types)
 
 // --- STATE ---
 let currentSong: CurrentSong | null = null;
@@ -20,57 +24,130 @@ let isEnabled = true;
 
 // --- LOGGING ---
 function log(msg: string, ...args: any[]) {
-    if (isDebug) console.log(`%c[Content] ${msg}`, 'color: #00ccff', ...args);
+  if (isDebug) console.log(`%c[Content] ${msg}`, "color: #00ccff", ...args);
 }
 
 // --- INITIALIZATION ---
+function injectScript() {
+  try {
+    const script = document.createElement("script");
+    const url = chrome.runtime.getURL("injector.js");
+    console.log(
+      "%c[Content] Attempting to inject script from URL:",
+      "color: yellow",
+      url,
+    );
+    script.src = url;
+    script.onload = () => {
+      console.log(
+        "%c[Content] Injector.js injected successfully",
+        "color: #00ccff",
+      );
+      script.remove();
+    };
+    script.onerror = (e) =>
+      console.error(
+        "%c[Content] Failed to inject injector.js",
+        "color: red",
+        e,
+      );
+    (document.head || document.documentElement).appendChild(script);
+  } catch (e) {
+    console.error("Injection failed", e);
+  }
+}
+
 function init() {
-    chrome.storage.sync.get(['isDebugEnabled', 'isEnabled'], (result) => {
-        isDebug = result.isDebugEnabled ?? false;
-        isEnabled = result.isEnabled ?? true;
+  console.log(
+    "%c[Content] Script Loaded & Running",
+    "color: #00ccff; font-size: 12px; font-weight: bold;",
+  );
 
-        updateAIRJModeIndicator();
+  // Inject the Interceptor Script (MAIN World)
+  injectScript();
 
-        // Request initial status from Injector
-        document.dispatchEvent(new CustomEvent(EVENT_REQUEST_DATA));
-    });
+  // Connection Timeout Watchdog
+  const connectionTimeout = setTimeout(() => {
+    console.error(
+      "%c[Content] CRITICAL: Injector handshake timed out! Injector.js may not be running.",
+      "font-size: 16px; background: red; color: white; padding: 4px;",
+    );
+  }, 2500);
+
+  // Listen for the first handshake success to clear the error
+  const handshakeSuccess = () => {
+    clearTimeout(connectionTimeout);
+    console.log(
+      "%c[Content] Injector Connected Successfully",
+      "color: #00ff00; font-weight: bold;",
+    );
+    document.removeEventListener(EVENT_RETURN_DATA, handshakeSuccess);
+  };
+  document.addEventListener(EVENT_RETURN_DATA, handshakeSuccess);
+
+  chrome.storage.sync.get(["isDebugEnabled", "isEnabled"], (result) => {
+    // Force Debug = TRUE for now to verify logic
+    isDebug = true; // result.isDebugEnabled ?? false;
+    isEnabled = result.isEnabled ?? true;
+
+    updateAIRJModeIndicator();
+
+    // Request initial status from Injector
+    // Using a small retry loop to ensure Injector is ready (race condition fix)
+    const requestData = () =>
+      document.dispatchEvent(new CustomEvent(EVENT_REQUEST_DATA));
+
+    // Wait slightly for injection to take hold
+    setTimeout(() => {
+      requestData();
+      setTimeout(requestData, 1000); // Retry once after 1s
+    }, 500);
+  });
 }
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync') {
-        if (changes.isDebugEnabled) isDebug = changes.isDebugEnabled.newValue;
-        if (changes.isEnabled) {
-            isEnabled = changes.isEnabled.newValue;
-            updateAIRJModeIndicator();
-        }
+  if (namespace === "sync") {
+    if (changes.isDebugEnabled) isDebug = changes.isDebugEnabled.newValue;
+    if (changes.isEnabled) {
+      isEnabled = changes.isEnabled.newValue;
+      updateAIRJModeIndicator();
     }
+  }
 });
 
 // --- UI INDICATOR ---
 function updateAIRJModeIndicator() {
-    const logoAnchor = document.querySelector('a.ytmusic-logo');
-    if (!logoAnchor) return;
-    let indicator = document.getElementById('ai-rj-mode-indicator');
+  const logoAnchor = document.querySelector("a.ytmusic-logo");
+  if (!logoAnchor) return;
+  let indicator = document.getElementById("ai-rj-mode-indicator");
 
-    if (isEnabled) {
-        if (!indicator) {
-            indicator = document.createElement('div');
-            indicator.id = 'ai-rj-mode-indicator';
-            indicator.innerText = 'AI RJ Mode';
-            Object.assign(indicator.style, {
-                fontSize: '10px', fontWeight: 'bold', color: '#fff', opacity: '0.7',
-                position: 'absolute', bottom: '-12px', left: '0', width: '100%',
-                textAlign: 'center', pointerEvents: 'none', whiteSpace: 'nowrap',
-                fontFamily: 'Roboto, Arial, sans-serif'
-            });
-            if (window.getComputedStyle(logoAnchor).position === 'static') {
-                (logoAnchor as HTMLElement).style.position = 'relative';
-            }
-            logoAnchor.appendChild(indicator);
-        }
-    } else {
-        indicator?.remove();
+  if (isEnabled) {
+    if (!indicator) {
+      indicator = document.createElement("div");
+      indicator.id = "ai-rj-mode-indicator";
+      indicator.innerText = "AI RJ Mode";
+      Object.assign(indicator.style, {
+        fontSize: "10px",
+        fontWeight: "bold",
+        color: "#fff",
+        opacity: "0.7",
+        position: "absolute",
+        bottom: "-12px",
+        left: "0",
+        width: "100%",
+        textAlign: "center",
+        pointerEvents: "none",
+        whiteSpace: "nowrap",
+        fontFamily: "Roboto, Arial, sans-serif",
+      });
+      if (window.getComputedStyle(logoAnchor).position === "static") {
+        (logoAnchor as HTMLElement).style.position = "relative";
+      }
+      logoAnchor.appendChild(indicator);
     }
+  } else {
+    indicator?.remove();
+  }
 }
 
 // --- LOGIC: SONG CHANGE HANDLING ---
@@ -80,43 +157,53 @@ function updateAIRJModeIndicator() {
  * The song is PAUSED when this fires.
  */
 async function handleSongChange(detail: any) {
-    if (!isEnabled) {
-        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-        return;
-    }
+  if (!isEnabled) {
+    document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+    return;
+  }
 
-    const prevSong = currentSong;
-    currentSong = detail.currentSong;
-    upcomingSong = detail.upcomingSong;
+  const prevSong = currentSong;
+  currentSong = detail.currentSong;
+  upcomingSong = detail.upcomingSong;
 
-    log(`🎵 Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
+  log(`🎵 Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
 
-    // 1. Announce the TRANSITION to this song (if available)
-    // We are looking for a transition from prevSong -> currentSong
-    // But since we store prewarmed keys as "Current::Next", we look for "Prev::Current"
-    if (prevSong && currentSong) {
-        const pairKey = `${prevSong.title}::${currentSong.title}`;
+  // 1. Check for MANUAL SKIP
+  if (detail.isManualSkip) {
+    log("Manual skip detected. Resuming immediately without announcement.");
+    document.dispatchEvent(new CustomEvent(EVENT_RESUME));
 
-        // Check if we have an announcement pending/ready?
-        // Actually, the background/offscreen handles the "Ready" part via TTS.
-        // We just ask the background: "Hey, song changed to B. Did you have a script for A->B?"
-        // But wait, the architecture is: Content asks to Play.
-
-        // Simpler approach:
-        // We assume `SONG_ABOUT_TO_END` logic was replaced by this strictly event-driven flow?
-        // No, the user said: "When we have the event of A::B... content script should start prefetch...
-        // and as soon as the song changes... trigger the announce flow".
-
-        // So here we trigger the announce flow.
-        await triggerAnnounce(pairKey);
-    } else {
-        // First song or no previous context. Just resume.
-        log("No previous song context or first load. Resuming.");
-        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-    }
-
-    // 2. Start Prefetch for NEXT Pair (Current::Upcoming)
+    // Even if manual, we should schedule prefetch for the NEW song pair
     schedulePrefetch();
+    return;
+  }
+
+  // 2. Announce the TRANSITION to this song (if available)
+  // We are looking for a transition from prevSong -> currentSong
+  // But since we store prewarmed keys as "Current::Next", we look for "Prev::Current"
+  if (prevSong && currentSong) {
+    const pairKey = `${prevSong.title}::${currentSong.title}`;
+
+    // Check if we have an announcement pending/ready?
+    // Actually, the background/offscreen handles the "Ready" part via TTS.
+    // We just ask the background: "Hey, song changed to B. Did you have a script for A->B?"
+    // But wait, the architecture is: Content asks to Play.
+
+    // Simpler approach:
+    // We assume `SONG_ABOUT_TO_END` logic was replaced by this strictly event-driven flow?
+    // No, the user said: "When we have the event of A::B... content script should start prefetch...
+    // and as soon as the song changes... trigger the announce flow".
+
+    // So here we trigger the announce flow.
+    await triggerAnnounce(pairKey);
+  } else {
+    // First song or no previous context. Just resume.
+    log("No previous song context or first load. Resuming.");
+    document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+  }
+
+  // 3. Start Prefetch for NEXT Pair (Current::Upcoming)
+  schedulePrefetch();
 }
 
 /**
@@ -124,216 +211,223 @@ async function handleSongChange(detail: any) {
  * It sends a message to background to play the audio.
  * Then waits for TTS_ENDED or timeout to Resume.
  */
+// Flag to detect if we resumed playback while announcing (e.g. Safety Timer)
+let isPlaybackResumed = false;
+
+// Listen for RESUME events to cancel pending announcements
+document.addEventListener(EVENT_RESUME, () => {
+  isPlaybackResumed = true;
+  log("Detection: Playback Resumed (User or Safety Timer)");
+});
+
 async function triggerAnnounce(pairKey: string) {
-    return new Promise<void>((resolve) => {
-        // We need to tell background to play audio for this pair.
-        // But the message type `SONG_ABOUT_TO_END` was used for this?
-        // Or `PLAY_AUDIO`?
-        // The previous logic used `SONG_ABOUT_TO_END` to trigger generation/prefetch? No.
+  return new Promise<void>((resolve) => {
+    // Expected current song (The "To" song)
+    const expectedCurrentTitle = pairKey.split("::")[1];
 
-        // Let's use a new flow or adapt `SONG_ABOUT_TO_END`.
-        // Actually, the user wants us to "notify the content script to carry on the task".
-        // The task is: Play the intro.
+    log(`Triggering Announce for ${pairKey}`);
+    isPlaybackResumed = false; // Reset flag
 
-        // We'll send a message to check if audio is ready and play it.
-        // If no audio is ready (because we didn't prefetch, or it failed), we should resume immediately.
+    // 1. Setup Resume/Abort Handler
+    const resumeHandler = (msg: any) => {
+      if (msg.type === "TTS_ENDED") {
+        chrome.runtime.onMessage.removeListener(resumeHandler);
 
-        // Let's send a PLAY_AUDIO request with specific pair info?
-        // Or re-use `SONG_ABOUT_TO_END` but rename it?
-        // `SONG_ABOUT_TO_END` was "Generate and Play".
+        // --- GUARD: LATE ANNOUNCEMENT ---
+        // If playback already resumed (by Safety Timer or User), DO NOT announce.
+        // Or if context changed completely.
+        if (isPlaybackResumed) {
+          log("🚫 Abort Announce: Playback was already resumed.");
+          resolve();
+          return;
+        }
 
-        // Ideally, we send "PLAY_TRANSITION".
-        // Since I shouldn't change background too much, let's see what `SONG_ABOUT_TO_END` does.
-        // It likely triggers `generate_rj` which generates AND plays.
-        // But we want to play PRE-generated audio if possible.
+        // --- GUARD: WRONG SONG ---
+        // If the song playing now is NOT what we expected to announce...
+        if (currentSong?.title !== expectedCurrentTitle) {
+          log(
+            `🚫 Abort Announce: Song changed mismatch! (Exp: ${expectedCurrentTitle}, Act: ${currentSong?.title})`,
+          );
+          // Ensure we resume just in case
+          document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+          resolve();
+          return;
+        }
 
-        // Wait, `PREWARM_RJ` generates audio.
-        // `SONG_ABOUT_TO_END` (in original code) was sent when song was ending.
+        log("TTS Ended. Resuming.");
+        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+        resolve();
+      }
+    };
+    chrome.runtime.onMessage.addListener(resumeHandler);
 
-        // Proposed Flow:
-        // 1. Send `PLAY_AUDIO` for `pairKey`.
-        //    But `PLAY_AUDIO` expects raw data or text.
-        //    The background stores the cache? No, `offscreen` has the cache.
+    // 2. Send Request
+    // 2. Send Request
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: "SONG_ABOUT_TO_END",
+          payload: {
+            currentSongTitle: pairKey.split("::")[0], // Previous
+            currentSongArtist: "Unknown",
+            upcomingSongTitle: pairKey.split("::")[1], // Current
+            upcomingSongArtist: currentSong!.artist,
+          },
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            log(
+              "Message sending failed (SW dead?):",
+              chrome.runtime.lastError.message,
+            );
+            // Resume immediately
+            document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+            resolve();
+          }
+        },
+      );
+    } catch (e) {
+      log("Context Invalidated or Send Failed:", e);
+      document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+      resolve();
+    }
 
-        // Let's rely on `SONG_ABOUT_TO_END` behavior if it handles "Play if ready".
-        // If not, we might need to modify `content.ts` to send the specific "Play Cached" command.
-        // Looking at `types.ts`, `PLAY_AUDIO` has `forSongNow`, `forSongNext`.
-
-        // Let's try sending `PLAY_AUDIO` with `forSongNow = currentSong.title`?
-        // But `offscreen` manages the cache.
-
-        // For now, to minimize offscreen changes, I will use `SONG_ABOUT_TO_END`.
-        // But wait! The prompt says: "The content script should then do the prefetch... and trigger the announce flow".
-
-        // If I send `SONG_ABOUT_TO_END`, the background/offscreen might try to generate if not found?
-        // That's acceptable.
-
-        log(`Triggering Announce for ${pairKey}`);
-
-        // We set a flag so that when TTS_ENDED comes, we resume.
-        const resumeHandler = (msg: any) => {
-            if (msg.type === 'TTS_ENDED') {
-                log("TTS Ended. Resuming.");
-                chrome.runtime.onMessage.removeListener(resumeHandler);
-                document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-                resolve();
-            }
-        };
-        chrome.runtime.onMessage.addListener(resumeHandler);
-
-        // Fallback: If no TTS plays within X seconds (e.g. not generated), resume.
-        // But how do we know if it *started*?
-        // We'll give it a short timeout (e.g. 2s) to acknowledge?
-        // If generation is slow (not prewarmed), we might wait longer?
-        // If we pause playback, we better have something to say or resume quickly.
-
-        // If not prewarmed, maybe we shouldn't announce?
-        // "The prefetch should only happen...".
-        // Ideally we only announce if we successfully prefetched.
-
-        // I will assume `SONG_ABOUT_TO_END` handles the "Play or Generate" logic.
-        // I'll send the message.
-        chrome.runtime.sendMessage({
-            type: 'SONG_ABOUT_TO_END',
-            payload: {
-                currentSongTitle: pairKey.split('::')[0], // Previous
-                currentSongArtist: "Unknown",
-                upcomingSongTitle: pairKey.split('::')[1], // Current
-                upcomingSongArtist: currentSong!.artist
-            }
-        });
-
-        // Safety Resume Timeout (in case background drops it)
-        setTimeout(() => {
-             // We can check if `isSongPaused` via DOM?
-             // But we are paused. If 3 seconds pass and no TTS started...
-             // Hard to know. Let's hope `TTS_ENDED` fires even if failure?
-             // Or we just rely on user manual resume if stuck.
-             // Better: Resume after 5s if nothing happens?
-             // log("Safety resume timer...");
-             // resolve(); document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-        }, 5000);
-    });
+    // 3. Safety Timeout (Content-Side)
+    // If background doesn't reply in 4s, we assume it failed/timed out.
+    // This is shorter than Injector's 6s, so we resume gracefully before the "Hammer" drops.
+    setTimeout(() => {
+      if (!isPlaybackResumed) {
+        log("⏱️ Announce Timeout (4s). Resuming manually.");
+        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+        resolve();
+      }
+    }, 4000);
+  });
 }
-
 
 // --- LOGIC: PREFETCH ---
 
 let prefetchTimer: any = null;
 
 function schedulePrefetch() {
-    if (prefetchTimer) clearTimeout(prefetchTimer);
+  if (prefetchTimer) clearTimeout(prefetchTimer);
 
-    if (!currentSong || !upcomingSong) {
-        log("Cannot schedule prefetch: missing info");
-        return;
-    }
+  if (!currentSong || !upcomingSong) {
+    log("Cannot schedule prefetch: missing info");
+    return;
+  }
 
-    const pairKey = `${currentSong.title}::${upcomingSong.title}`;
-    log(`Scheduling prefetch for ${pairKey} in 15s...`);
+  const pairKey = `${currentSong.title}::${upcomingSong.title}`;
+  log(`Scheduling prefetch for ${pairKey} in 15s...`);
 
-    // Store start time for this pair attempt
-    const now = Date.now();
+  // Store start time for this pair attempt
+  const now = Date.now();
 
-    // Check if we did this recently (Debounce/Throttle)
-    // The user requirement: "prefetch only after 15s of the first prefetch request for the given pair"
-    // I interpret this as: "Wait 15s from song start before *actually* requesting."
+  // Check if we did this recently (Debounce/Throttle)
+  // The user requirement: "prefetch only after 15s of the first prefetch request for the given pair"
+  // I interpret this as: "Wait 15s from song start before *actually* requesting."
 
-    prefetchTimer = setTimeout(() => {
-        performPrefetch(pairKey, currentSong!, upcomingSong!);
-    }, 15000);
+  prefetchTimer = setTimeout(() => {
+    performPrefetch(pairKey, currentSong!, upcomingSong!);
+  }, 15000);
 }
 
-function performPrefetch(pairKey: string, cSong: CurrentSong, uSong: UpcomingSong) {
-    // Verify we are still playing the same song context
-    if (!currentSong || !upcomingSong) return;
-    const currentPair = `${currentSong.title}::${upcomingSong.title}`;
+function performPrefetch(
+  pairKey: string,
+  cSong: CurrentSong,
+  uSong: UpcomingSong,
+) {
+  // Verify we are still playing the same song context
+  if (!currentSong || !upcomingSong) return;
+  const currentPair = `${currentSong.title}::${upcomingSong.title}`;
 
-    if (currentPair !== pairKey) {
-        log(`Prefetch aborted: Context changed (${currentPair} != ${pairKey})`);
-        return;
-    }
+  if (currentPair !== pairKey) {
+    log(`Prefetch aborted: Context changed (${currentPair} != ${pairKey})`);
+    return;
+  }
 
-    // Check history to avoid spamming the same pair if we loop?
-    // User: "compare the upcoming requests for a difference of 15seconds"
-    // Since we just waited 15s, this is satisfied?
+  // Check history to avoid spamming the same pair if we loop?
+  // User: "compare the upcoming requests for a difference of 15seconds"
+  // Since we just waited 15s, this is satisfied?
 
-    if (processedPairs.has(pairKey)) {
-        // Maybe we allow re-fetching if it's been a long time?
-        // For now, strict once-per-session-per-pair to save tokens.
-        log(`Already prefetched ${pairKey}. Skipping.`);
-        return;
-    }
+  if (processedPairs.has(pairKey)) {
+    // Maybe we allow re-fetching if it's been a long time?
+    // For now, strict once-per-session-per-pair to save tokens.
+    log(`Already prefetched ${pairKey}. Skipping.`);
+    return;
+  }
 
-    log(`🚀 Sending PREWARM_RJ for ${pairKey}`);
-    processedPairs.add(pairKey);
+  log(`🚀 Sending PREWARM_RJ for ${pairKey}`);
+  processedPairs.add(pairKey);
 
-    chrome.runtime.sendMessage({
-        type: 'PREWARM_RJ',
-        payload: {
-            oldSongTitle: cSong.title,
-            oldArtist: cSong.artist,
-            newSongTitle: uSong.title,
-            newArtist: uSong.artist,
-            currentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-    });
+  chrome.runtime.sendMessage({
+    type: "PREWARM_RJ",
+    payload: {
+      oldSongTitle: cSong.title,
+      oldArtist: cSong.artist,
+      newSongTitle: uSong.title,
+      newArtist: uSong.artist,
+      currentTime: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    },
+  });
 }
 
 // --- EVENT LISTENERS ---
 
 // 1. From Injector (Song Change / Data Update)
 document.addEventListener(EVENT_TRIGGER, (e: any) => {
-    handleSongChange(e.detail);
+  handleSongChange(e.detail);
 });
 
 document.addEventListener(EVENT_UPDATE, (e: any) => {
-    const { currentSong: c, upcomingSong: u } = e.detail;
-    // Only update data, don't trigger song change logic unless title changed
-    if (c?.title !== currentSong?.title) {
-        // This is weird, injector should have fired TRIGGER.
-        // But maybe we missed it?
-        handleSongChange(e.detail);
-    } else {
-        // Just update upcoming (Queue loaded?)
-        if (upcomingSong?.title !== u?.title) {
-            log(`Queue Updated: ${upcomingSong?.title} -> ${u?.title}`);
-            upcomingSong = u;
-            // If we have a new upcoming song, we should probably schedule prefetch now!
-            schedulePrefetch();
-        }
+  const { currentSong: c, upcomingSong: u } = e.detail;
+  // Only update data, don't trigger song change logic unless title changed
+  if (c?.title !== currentSong?.title) {
+    // This is weird, injector should have fired TRIGGER.
+    // But maybe we missed it?
+    handleSongChange(e.detail);
+  } else {
+    // Just update upcoming (Queue loaded?)
+    if (upcomingSong?.title !== u?.title) {
+      log(`Queue Updated: ${upcomingSong?.title} -> ${u?.title}`);
+      upcomingSong = u;
+      // If we have a new upcoming song, we should probably schedule prefetch now!
+      schedulePrefetch();
     }
+  }
 });
 
 document.addEventListener(EVENT_RETURN_DATA, (e: any) => {
-    const { currentSong: c, upcomingSong: u } = e.detail;
-    currentSong = c;
-    upcomingSong = u;
-    log(`Initial Data: ${currentSong?.title} -> ${upcomingSong?.title}`);
+  const { currentSong: c, upcomingSong: u } = e.detail;
+  currentSong = c;
+  upcomingSong = u;
+  log(`Initial Data: ${currentSong?.title} -> ${upcomingSong?.title}`);
 
-    // On initial load, we might want to prefetch?
-    if (currentSong && upcomingSong) {
-        schedulePrefetch();
-    }
+  // On initial load, we might want to prefetch?
+  if (currentSong && upcomingSong) {
+    schedulePrefetch();
+  }
 });
 
 // 2. From Background (TTS Ended, etc.)
 chrome.runtime.onMessage.addListener((message: MessageSchema) => {
-    if (message.type === 'TTS_ENDED') {
-        // Handled in triggerAnnounce usually, but as a fallback:
-        log("TTS_ENDED received globally.");
-        // We assume triggerAnnounce listener caught it.
-        // If we are paused and stuck, we can resume here too.
-        if (document.querySelector('video')?.paused) {
-             document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-        }
+  if (message.type === "TTS_ENDED") {
+    // Handled in triggerAnnounce usually, but as a fallback:
+    log("TTS_ENDED received globally.");
+    // We assume triggerAnnounce listener caught it.
+    // If we are paused and stuck, we can resume here too.
+    if (document.querySelector("video")?.paused) {
+      document.dispatchEvent(new CustomEvent(EVENT_RESUME));
     }
+  }
 });
 
-
 // Start
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
 } else {
-    init();
+  init();
 }

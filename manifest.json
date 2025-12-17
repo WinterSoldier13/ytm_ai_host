@@ -34,15 +34,16 @@
             "js": [
                 "content.js"
             ]
-        },
+        }
+    ],
+    "web_accessible_resources": [
         {
-            "matches": [
-                "https://music.youtube.com/*"
-            ],
-            "js": [
+            "resources": [
                 "injector.js"
             ],
-            "world": "MAIN"
+            "matches": [
+                "https://music.youtube.com/*"
+            ]
         }
     ],
     "icons": {
