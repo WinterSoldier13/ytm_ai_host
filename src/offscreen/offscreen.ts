@@ -256,7 +256,7 @@ async function generateWithGeminiAPI(data: {
   const addNewsInfo = Math.floor(aRandomNumber * 10) + 1 === 10; // 1/10 chance to add news info
 
   const extraInstruction = addWittyFact
-    ? " Also, say a witty fact related to the songs that you can think of."
+    ? "Maybe provide a witty random fact."
     : "";
 
   const prompt = `Previous Song: "${data.oldSongTitle}" by "${data.oldArtist}"\nNext Song: "${data.newSongTitle}" by "${data.newArtist}"\n${timeContext}\n\nGenerate the DJ intro now.${extraInstruction}`;
@@ -332,7 +332,9 @@ async function playAudio(
       console.log(
         "[Offscreen] Validation failed: Song changed. Shutup mode activated.",
       );
-      return;
+      // Testing without shutting the fuck up for now :)
+      // because the events are not in sync. Comment out "return", if things break.
+      // return;
     }
     console.log(
       `[Offscreen] Playing audio using provider: ${payload.speechProvider || "tts"}`,
