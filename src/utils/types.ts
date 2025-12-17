@@ -36,6 +36,9 @@ export type MessageSchema =
       type: "TTS_ENDED";
     }
   | {
+      type: "TTS_STARTED";
+    }
+  | {
       type: "PREWARM_RJ";
       payload: {
         oldSongTitle: string;
@@ -121,3 +124,4 @@ export const EVENT_UPDATE = "YTM_EXT_UPDATE"; // Info Updated (e.g. Queue loaded
 export const EVENT_RESUME = "YTM_EXT_RESUME";
 export const EVENT_REQUEST_DATA = "YTM_EXTENSION_REQUEST_DATA";
 export const EVENT_RETURN_DATA = "YTM_EXTENSION_RETURN_DATA";
+export const EVENT_TTS_STARTED = "YTM_EXT_TTS_STARTED";

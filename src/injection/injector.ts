@@ -6,6 +6,7 @@ import {
   EVENT_RESUME,
   EVENT_REQUEST_DATA,
   EVENT_RETURN_DATA,
+  EVENT_TTS_STARTED,
 } from "../utils/types";
 
 (() => {
@@ -138,6 +139,22 @@ import {
       log(`Skipping broadcast ${eventType}: No active player found.`);
     }
   }
+
+  // Smart Pause: Extend lock when TTS starts
+  document.addEventListener(EVENT_TTS_STARTED, () => {
+    log("🎤 TTS Started Signal (DOM). Extending Safety Lock to 30s.");
+    if (safetyTimer) clearTimeout(safetyTimer);
+    // 30s emergency unlock
+    safetyTimer = setTimeout(() => {
+      log("Safety Unlock Triggered (Extended 30s) - TTS took too long?");
+      if (isLocked) {
+        isLocked = false;
+        broadcast(EVENT_RESUME, "SAFETY_TIMER_LONG");
+        const v = document.querySelector("video, audio") as HTMLMediaElement;
+        if (v) originalPlay.call(v);
+      }
+    }, 30000);
+  });
 
   // --- 3. THE PLAY LOCK & TRAP ---
 

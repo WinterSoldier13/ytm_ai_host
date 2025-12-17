@@ -187,6 +187,16 @@ chrome.runtime.onMessage.addListener(
         sendResponse(response);
       });
       return true; // Keep channel open for async response
+    } else if (message.type === "TTS_STARTED") {
+      // Forward to all YTM tabs (or at least the active one)
+      // Since offscreen doesn't know tabId easily here (it's in payload but message doesn't have it at top level always)
+      // Actually playAudio payload has tabId, but TTS_STARTED from offscreen might simpler global broadcast?
+      // Or we can query tabs.
+      chrome.tabs.query({ url: "*://music.youtube.com/*" }, (tabs) => {
+        for (const tab of tabs) {
+          if (tab.id) chrome.tabs.sendMessage(tab.id, { type: "TTS_STARTED" });
+        }
+      });
     }
   },
 );

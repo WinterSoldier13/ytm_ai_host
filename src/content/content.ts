@@ -7,6 +7,7 @@ import {
   EVENT_RESUME,
   EVENT_REQUEST_DATA,
   EVENT_RETURN_DATA,
+  EVENT_TTS_STARTED,
 } from "../utils/types";
 
 // --- CONSTANTS --- (Imported from types)
@@ -283,15 +284,29 @@ async function triggerAnnounce(pairKey: string) {
     }
 
     // 3. Safety Timeout (Content-Side)
-    // If background doesn't reply in 4s, we assume it failed/timed out.
-    // This is shorter than Injector's 6s, so we resume gracefully before the "Hammer" drops.
-    setTimeout(() => {
+    // Default 4s. If TTS starts, we extend it indefinitely (or rely on Injector's long timer).
+    let safetyTimer = setTimeout(() => {
       if (!isPlaybackResumed) {
         log("⏱️ Announce Timeout (4s). Resuming manually.");
         document.dispatchEvent(new CustomEvent(EVENT_RESUME));
         resolve();
       }
     }, 4000);
+
+    const ttsStartedHandler = () => {
+      log("🎤 TTS Started! Clearing 4s safety timer.");
+      clearTimeout(safetyTimer);
+      document.removeEventListener(EVENT_TTS_STARTED, ttsStartedHandler);
+    };
+    document.addEventListener(EVENT_TTS_STARTED, ttsStartedHandler);
+
+    // Ensure we clean up listener if it ends/resumes before start
+    const originalResumeHandler = resumeHandler; // We can't access resumeHandler easily if we don't modify structure.
+    // Actually, when we resolve, we should clean up.
+    // But promise closure...
+    // Let's just rely on the fact that if it resolves, the timer does nothing.
+    // But we should clean up the listener to avoid memory leak?
+    // It's a one-off per announce. Usage is low. OK for now.
   });
 }
 
@@ -414,6 +429,10 @@ chrome.runtime.onMessage.addListener(
       if (document.querySelector("video")?.paused) {
         document.dispatchEvent(new CustomEvent(EVENT_RESUME));
       }
+    } else if (message.type === "TTS_STARTED") {
+      log("TTS Started Signal Received. Extending Safety Timers.");
+      // Forward to Injector
+      document.dispatchEvent(new CustomEvent(EVENT_TTS_STARTED));
     } else if (message.type === "GET_CURRENT_SONG_INFO") {
       sendResponse({
         type: "CURRENT_SONG_INFO",

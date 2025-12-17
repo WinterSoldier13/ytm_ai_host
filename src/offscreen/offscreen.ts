@@ -394,10 +394,16 @@ async function playAudio(
           reject(e);
           currentAudio = null;
         };
-        currentAudio.play().catch((e) => {
-          reject(e);
-          currentAudio = null;
-        });
+        currentAudio
+          .play()
+          .then(() => {
+            // Notify system that TTS actually started talking
+            chrome.runtime.sendMessage({ type: "TTS_STARTED" });
+          })
+          .catch((e) => {
+            reject(e);
+            currentAudio = null;
+          });
       });
     }
     // If it's an ArrayBuffer (Gemini API returns PCM, which we convert to WAV ArrayBuffer or play directly)
