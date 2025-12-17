@@ -1,4 +1,4 @@
-# AI DJ Cara - Your Personal AI Radio Jockey 🎙️🎵
+# AI DJ Cara - Your Personal AI Radio Jockey
 
 > probably the best fucking thing I've ever coded for myself
 

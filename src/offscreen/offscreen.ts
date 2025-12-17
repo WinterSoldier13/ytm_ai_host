@@ -39,8 +39,6 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-// When the user clicks "next", it should shut the fuck up.
-// When the user clicks "next", it should shut the fuck up.
 async function shouldShutTheFuckUp(
   tabId: number,
   songNow?: string,

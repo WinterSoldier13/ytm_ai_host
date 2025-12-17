@@ -142,7 +142,7 @@ import {
 
   // Smart Pause: Extend lock when TTS starts
   document.addEventListener(EVENT_TTS_STARTED, () => {
-    log("🎤 TTS Started Signal (DOM). Extending Safety Lock to 30s.");
+    log("TTS Started Signal (DOM). Extending Safety Lock to 30s.");
     if (safetyTimer) clearTimeout(safetyTimer);
     // 30s emergency unlock
     safetyTimer = setTimeout(() => {
