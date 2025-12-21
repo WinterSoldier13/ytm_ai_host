@@ -1,8 +1,8 @@
-# AI DJ Cara - Your Personal AI Radio Jockey
+# YTM AI HOST - Your Personal AI Radio Jockey
 
 > probably the best fucking thing I've ever coded for myself
 
-**AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
+**YTM AI Host** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
 
 ## Why?
 
@@ -29,7 +29,7 @@ There are several ways to run AI DJ Cara depending on your hardware and privacy 
 
 **Best for**: Maximum privacy, zero cost, and custom models.
 
-- **LLM**: Local Server (Llama 3.1 8B)
+- **LLM**: Local Server (Llama 3.1 8B or anything that you prefer)
 - **TTS**: Local Server (XTTS v2)
 - **Why**: This gives you the best control. Takes advantage of your GPU for fast inference and realistic voices.
 
@@ -40,7 +40,7 @@ There are several ways to run AI DJ Cara depending on your hardware and privacy 
 - **LLM**: Gemini API
 - **TTS**: Gemini API
 - **Why**: Google's models are state-of-the-art.
-- **Note**: The author uses this personally. However, be aware that this gets costly pretty quickly.
+- **Note**: The author uses this personally. However, be aware that TTS has stopped working on Free Gemini API.
 
 ### 3. ⚖️ The Balanced Choice (Gemini + Kokoro)
 
@@ -57,11 +57,11 @@ There are several ways to run AI DJ Cara depending on your hardware and privacy 
 - **LLM**: WebLLM (In-Browser Llama)
 - **TTS**: Kokoro JS (In-Browser)
 - **Why**: Everything runs inside Chrome. No data leaves your machine, and no separate python server is needed.
-- **Requirement**: You must compile the extension with `npm run build -- --env webllm`.
+- **Requirement**: You must compile the extension with `npm run build -- --env webllm`. Also you might need to turn some chrome://flags to allow GPU use.
 
 ## Download
 
-You can download the compiled version (excluding WebLLM for a smaller file size) from the [Releases](https://github.com/your-repo/ai_dj_cara/releases) tab.
+You can download the compiled version (excluding WebLLM for a smaller file size) from the [Releases](https://github.com/wintersoldier13/ai_dj_cara/releases) tab.
 
 ## Installation & Setup
 
@@ -171,8 +171,13 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 
 Please create an Issue first to discuss your ideas before working on a PR.
 
-- **Good First Issue**: Integrating AI DJ Cara with Spotify Web would be a fantastic contribution!
+- **Good First Issue**: Integrating with Spotify Web would be a fantastic contribution!
 
 ## LICENSE
 
 We use a custom license for this project, please read it at [LICENSE](LICENSE).
+
+## Disclamier
+Parts of this project are vibe coded, saved me a lot of time but some parts of the codebase are redundant - I am working on simplyfing unnecessary AI Slop.
+
+Made with love with Google Antigravity.
