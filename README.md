@@ -40,7 +40,7 @@ There are several ways to run AI DJ Cara depending on your hardware and privacy 
 - **LLM**: Gemini API
 - **TTS**: Gemini API
 - **Why**: Google's models are state-of-the-art.
-- **Note**: The author uses this personally. However, be aware that TTS has stopped working on Free Gemini API.
+- **Note**: I use this personally. However, be aware that TTS has stopped working on Free Gemini API.
 
 ### 3. ⚖️ The Balanced Choice (Gemini + Kokoro)
 
